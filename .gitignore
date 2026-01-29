@@ -37,3 +37,7 @@ Thumbs.db
 *.tmp
 *.swp
 *~
+
+
+# others 
+*.csv
