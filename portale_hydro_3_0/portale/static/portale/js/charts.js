@@ -12,6 +12,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const labels = ["Lun", "Mar", "Mer", "Gio", "Ven", "Sab", "Dom"];
   const grid = document.querySelector(".facility-plot-grid");
   const instances = new Map();
+  const pollingIntervals = new Map();
+  const POLL_INTERVAL_MS = 60000; // 1 minute
 
   // #endregion Boot
 
@@ -366,7 +368,6 @@ document.addEventListener("DOMContentLoaded", () => {
     };
 
     if (cfg.useApi) {
-      setLoading(true);
       const misuratoreId = canvas.getAttribute("data-misuratore");
       const apiBase =
         cfg.apiMode === "duration_curve"
@@ -378,70 +379,81 @@ document.addEventListener("DOMContentLoaded", () => {
           )}&range=${encodeURIComponent(rangeKey)}`
         : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
 
-      fetch(apiUrl)
-        .then((response) => {
-          if (!response.ok) {
-            throw new Error("API error");
-          }
-          return response.json();
-        })
-        .then((data) => {
-          const isDurationCurve = cfg.apiMode === "duration_curve";
-          const timestamps = isDurationCurve
-            ? data?.exceedance_percent || []
-            : data?.timestamps || [];
-          if (!Array.isArray(timestamps)) {
-            return;
-          }
-          chart.data.labels = timestamps;
-          datasetConfigs.forEach((ds, index) => {
-            const sourceValues = data[ds.source] || [];
-            const parsedValues = sourceValues.map((value) => {
-              if (value === null || value === undefined) {
-                return null;
-              }
-              const parsed = Number(value);
-              return Number.isFinite(parsed) ? parsed : null;
+      const loadApiData = () => {
+        setLoading(true);
+        fetch(apiUrl)
+          .then((response) => {
+            if (!response.ok) {
+              throw new Error("API error");
+            }
+            return response.json();
+          })
+          .then((data) => {
+            console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
+            const isDurationCurve = cfg.apiMode === "duration_curve";
+            const timestamps = isDurationCurve
+              ? data?.exceedance_percent || []
+              : data?.timestamps || [];
+            if (!Array.isArray(timestamps)) {
+              return;
+            }
+            chart.data.labels = timestamps;
+            datasetConfigs.forEach((ds, index) => {
+              const sourceValues = data[ds.source] || [];
+              const parsedValues = sourceValues.map((value) => {
+                if (value === null || value === undefined) {
+                  return null;
+                }
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : null;
+              });
+              const useXYPoints = enableDecimation || isDurationCurve;
+              chart.data.datasets[index].data = useXYPoints
+                ? parsedValues.map((value, i) =>
+                    value === null ? null : { x: timestamps[i], y: value }
+                  )
+                : parsedValues;
             });
-            const useXYPoints = enableDecimation || isDurationCurve;
-            chart.data.datasets[index].data = useXYPoints
-              ? parsedValues.map((value, i) =>
-                  value === null ? null : { x: timestamps[i], y: value }
-                )
-              : parsedValues;
-          });
-          applyRangeLabel(timestamps);
-          let maxValue = 0;
-          datasetConfigs.forEach((ds) => {
-            const sourceValues = data[ds.source] || [];
-            sourceValues.forEach((value) => {
-              const parsed = Number(value);
-              if (!Number.isFinite(parsed)) {
-                return;
-              }
-              if (parsed > maxValue) {
-                maxValue = parsed;
-              }
+            applyRangeLabel(timestamps);
+            let maxValue = 0;
+            datasetConfigs.forEach((ds) => {
+              const sourceValues = data[ds.source] || [];
+              sourceValues.forEach((value) => {
+                const parsed = Number(value);
+                if (!Number.isFinite(parsed)) {
+                  return;
+                }
+                if (parsed > maxValue) {
+                  maxValue = parsed;
+                }
+              });
             });
+            const avgNumeric = parseAverageValue(avgValue);
+            const boundedMax = Number.isFinite(avgNumeric)
+              ? Math.max(maxValue, avgNumeric)
+              : maxValue;
+            if (chart.options.scales?.y) {
+              chart.options.scales.y.suggestedMax = boundedMax * 1.2;
+            }
+            if (cfg.showAverage) {
+              updateAverageLine(chart, avgValue);
+            }
+            chart.update("none");
+          })
+          .catch(() => {
+            // keep dummy chart if API fails
+          })
+          .finally(() => {
+            setLoading(false);
           });
-          const avgNumeric = parseAverageValue(avgValue);
-          const boundedMax = Number.isFinite(avgNumeric)
-            ? Math.max(maxValue, avgNumeric)
-            : maxValue;
-          if (chart.options.scales?.y) {
-            chart.options.scales.y.suggestedMax = boundedMax * 1.2;
-          }
-          if (cfg.showAverage) {
-            updateAverageLine(chart, avgValue);
-          }
-          chart.update("none");
-        })
-        .catch(() => {
-          // keep dummy chart if API fails
-        })
-        .finally(() => {
-          setLoading(false);
-        });
+      };
+
+      loadApiData();
+
+      if (rangeKey === "24h") {
+        const intervalId = window.setInterval(loadApiData, POLL_INTERVAL_MS);
+        pollingIntervals.set(cfg.id, intervalId);
+      }
     } else {
       setLoading(false);
     }
@@ -471,6 +483,10 @@ document.addEventListener("DOMContentLoaded", () => {
       chartInstance.destroy();
     });
     instances.clear();
+    pollingIntervals.forEach((intervalId) => {
+      window.clearInterval(intervalId);
+    });
+    pollingIntervals.clear();
     charts.forEach((cfg) => {
       createChart(cfg, rangeKey);
     });
@@ -582,4 +598,3 @@ document.addEventListener("DOMContentLoaded", () => {
   });
   // #endregion Chart Controls
 });
-

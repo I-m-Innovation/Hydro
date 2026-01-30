@@ -37,3 +37,15 @@ def ensure_measurements_index():
     except Exception as e:
         print(f"[schema] measurements index error: {e}")
         raise
+
+def ensure_flow_histogram_table():
+    try:
+        with get_conn() as conn:
+            sql = load_sql("ensure_flow_histogram_table.sql")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        print("[schema] flow histogram table ok")
+    except Exception as e:
+        print(f"[schema] flow histogram table error: {e}")
+        raise

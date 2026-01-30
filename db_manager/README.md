@@ -35,7 +35,8 @@ entrypoint principale.
 2) **Transform**: i raw vengono trasformati in `tab_measurements` (formato wide).
 3) **Clean (Hampel)**: si applica il filtro Hampel e si scrive in `tab_measurements_clean`.
 4) **Stats**: si aggiornano le statistiche in `tab_statistiche_misuratori`.
-5) **Materialized View**: si aggiorna `mv_flow_duration_curve_daily`.
+5) **Flow histogram**: si calcola l'istogramma di portata in `tab_flow_histogram`.
+6) **Materialized View**: si aggiorna `mv_flow_duration_curve_daily`.
 
 ### ETL incrementale (raw -> measurements)
 Il job di trasformazione usa una tabella di stato (`hydro.tab_etl_state`) per
@@ -52,4 +53,5 @@ ricordare l'ultimo timestamp processato.
 `run.py` avvia l'ingestione Event Hub e, in parallelo, un job periodico di
 trasformazione. L'intervallo si regola in `config/settings.py` tramite
 `SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM`, `SECONDS_BETWEEN_CLEAN_MEASUREMENTS`
-`SECONDS_BETWEEN_REFRESH_STATS` e `SECONDS_BETWEEN_REFRESH_MV`.
+`SECONDS_BETWEEN_REFRESH_STATS`, `SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM`
+e `SECONDS_BETWEEN_REFRESH_MV`.
