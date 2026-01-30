@@ -30,12 +30,25 @@ Il modulo legge la connessione al database dalle variabili d'ambiente:
 In pratica: i job richiamano i file SQL quando serve, mentre `run.py` fa da
 entrypoint principale.
 
+### Workflow DB (alto livello)
+1) **Ingestione**: i dati arrivano da Azure Event Hub in `tab_measurements_raw`.
+2) **Transform**: i raw vengono trasformati in `tab_measurements` (formato wide).
+3) **Clean (Hampel)**: si applica il filtro Hampel e si scrive in `tab_measurements_clean`.
+4) **Stats**: si aggiornano le statistiche in `tab_statistiche_misuratori`.
+
 ### ETL incrementale (raw -> measurements)
 Il job di trasformazione usa una tabella di stato (`hydro.tab_etl_state`) per
 processare solo i nuovi dati raw. In questo modo evita di ricalcolare tutto
 ad ogni ciclo e rimane leggero anche con molti dati.
 
+### Clean (Hampel) -> tab_measurements_clean
+Abbiamo un job Python che legge da `tab_measurements`, applica il filtro Hampel
+per ogni `device_id` (sulla colonna `instant_flow_rate_2`) e fa upsert su
+`tab_measurements_clean`. Il job e' incrementale e usa `tab_etl_state` per
+ricordare l'ultimo timestamp processato.
+
 ### Scheduler interno
 `run.py` avvia l'ingestione Event Hub e, in parallelo, un job periodico di
 trasformazione. L'intervallo si regola in `config/settings.py` tramite
-`SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM`.
+`SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM`, `SECONDS_BETWEEN_CLEAN_MEASUREMENTS`
+e `SECONDS_BETWEEN_REFRESH_STATS`.

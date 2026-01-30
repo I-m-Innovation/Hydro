@@ -1,0 +1,1 @@
+REFRESH MATERIALIZED VIEW hydro.mv_flow_duration_curve_daily;
