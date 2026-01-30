@@ -14,3 +14,20 @@ Prima di leggere è bene sapere che comunque questo è il mio primo progetto dja
 - Threading senza shutdown pulito: i consumer sono in thread daemon, quindi in stop forzato non hai garanzie su flush/checkpoint/close. main_00.py
 - Nessun controllo su payload invalido parziale: se values è dict ma contiene misure non conformi, salti semplicemente senza logging strutturato; è difficile capire quali device generano dati sporchi. main_00.py
 - Se vuoi, posso affrontarli in ordine di impatto con cambi minimi (pool connessioni + retry/backoff + cleanup state).
+
+
+## Ultimo update - 30/01/2026
+
+### DB Manager
+- Aggiunta tabella `hydro.tab_flow_histogram` (schema “lungo”) con FK su `tab_misuratori`.
+- Job `refresh_flow_histogram` con SQL dedicato e scheduler in `run.py`.
+- Istogramma calcolato su **tutto lo storico** (`FLOW_HIST_WINDOW_HOURS = 0`).
+- Pianificazione istogramma: **1 volta al giorno** (`SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM = 86400`).
+- Endpoint Django per istogramma: `/portale/api/flow-histogram/?id_misuratore=...`.
+- Output API include `percent` oltre a `count`.
+
+### Frontend (charts)
+- Grafico istogramma collegato all’endpoint e visualizzato su “chart-fluid-velocity”.
+- Asse Y in percentuale con tick interi.
+- Tooltip con **range del bin**, **percentuale** e **numero punti**.
+- Asse X visibile con tick della portata.
