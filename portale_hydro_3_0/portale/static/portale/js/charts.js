@@ -516,7 +516,7 @@ document.addEventListener("DOMContentLoaded", () => {
               ? Math.max(maxValue, avgNumeric)
               : maxValue;
             if (chart.options.scales?.y) {
-              chart.options.scales.y.suggestedMax = boundedMax * 1.2;
+              chart.options.scales.y.suggestedMax = boundedMax * 1.1;
             }
             if (cfg.showAverage) {
               updateAverageLine(chart, avgValue);
