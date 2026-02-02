@@ -31,3 +31,14 @@ Prima di leggere è bene sapere che comunque questo è il mio primo progetto dja
 - Asse Y in percentuale con tick interi.
 - Tooltip con **range del bin**, **percentuale** e **numero punti**.
 - Asse X visibile con tick della portata.
+
+## Ultimo update - 02/02/2026
+
+### Frontend (status LED)
+- Aggiunto LED di stato vicino al titolo del misuratore in `portale_hydro_3_0/portale/templates/portale/includes/main.html`.
+- Stili LED con animazione pulse e classi stato (`status-green`, `status-orange`, `status-red`, `status-gray`) in `portale_hydro_3_0/portale/static/portale/css/style.css`.
+- Script `portale_hydro_3_0/portale/static/portale/js/led_status.js` con polling ogni 60s e log di debug.
+
+### Backend (status LED)
+- Nuovo endpoint `api/led-status/` che restituisce l'ultima misurazione per misuratore in `portale_hydro_3_0/portale/views.py` e `portale_hydro_3_0/portale/urls.py`.
+- Regole stato: >2h giallo, >6h rosso, assenza dati grigio, altrimenti verde.

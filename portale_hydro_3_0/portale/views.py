@@ -21,9 +21,6 @@ def home(request):
 def facilities_map(request):
     return render(request, "portale/facilities_map.html")
 
-
-
-
 def measurements_api(request):
     id_misuratore = request.GET.get("id_misuratore")
     if not id_misuratore:
@@ -93,7 +90,6 @@ def measurements_api(request):
         "is_outlier": outliers,
     }
     return JsonResponse(data)
-
 
 def duration_curve_api(request):
     t0 = time.perf_counter()
@@ -249,3 +245,22 @@ def misuratore_detail(request, id_misuratore):
         "misuratore_stats": misuratore_stats,
     }
     return render(request, "portale/misuratore_detail.html", context)
+
+def led_status_api(request):
+    rows = (
+        tab_measurements_clean.objects
+        .values("id_misuratore")
+        .annotate(latest_measurement=Max("data_misurazione"))
+        .order_by("id_misuratore")
+    )
+    
+    data = {
+        "items" : [
+            {
+            "id_misuratore": row["id_misuratore"],
+            "latest_measurement": row["latest_measurement"].isoformat().replace("+00:00", "Z") if row["latest_measurement"] else None,
+            } 
+        for row in rows
+        ]
+    }
+    return JsonResponse(data)

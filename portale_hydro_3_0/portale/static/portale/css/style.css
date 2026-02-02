@@ -274,13 +274,87 @@ body.sidebar-collapsed #lista-impianti {
   flex-direction: column;
 }
 
+.facility-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid var(--color-accent);
+  padding-bottom: 1rem;
+}
+
+.status-indicator {
+  --status-dot-size: 1.5rem;
+  --status-green: #0bbf0b;
+  --status-red: #c51b1b;
+  --status-orange: #db8719;
+  --status-gray: #888888;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.status-dot {
+  width: var(--status-dot-size);
+  height: var(--status-dot-size);
+  border-radius: 50%;
+  position: relative;
+  flex: 0 0 auto;
+  margin-left: 1rem;
+  margin-right: 1rem;
+}
+
+.status-dot::before,
+.status-dot::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  animation: status-pulse 2s infinite linear;
+  opacity: 0.3;
+}
+
+.status-dot::after {
+  animation-delay: 1s;
+}
+
+@keyframes status-pulse {
+  0% {
+    transform: translate(-50%, -50%) scale(1);
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(2.5);
+    opacity: 0;
+  }
+}
+
+.status-green {
+  background-color: var(--status-green);
+}
+
+.status-red {
+  background-color: var(--status-red);
+}
+
+.status-orange {
+  background-color: var(--status-orange);
+}
+
+.status-gray {
+  background-color: var(--status-gray);
+}
+
 .facility-title {
-  margin: 0 0 1.5rem 0;
+  margin: 0;
   font-size: 2rem;
   font-weight: 700;
   color: var(--color-text);
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--color-accent);
   flex: 0 0 auto;
 }
 

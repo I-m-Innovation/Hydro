@@ -33,7 +33,11 @@
 
   <div class="facility-panel">
     {% if misuratore %}
-    <h2 class="facility-title">{{misuratore.name}}</h2>
+    <div class="facility-header status-indicator">
+      <span title="facility-status" class="status-dot status-gray" aria-label="Stato misuratore" data-misuratore-id="{{misuratore.id_misuratore}}"></span>
+      <h2 class="facility-title">{{misuratore.name}}</h2>
+    </div>
+    
 
     <div class="facility-grid">
       <!-- Left column: Info + Stats -->
