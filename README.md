@@ -42,3 +42,13 @@ Prima di leggere è bene sapere che comunque questo è il mio primo progetto dja
 ### Backend (status LED)
 - Nuovo endpoint `api/led-status/` che restituisce l'ultima misurazione per misuratore in `portale_hydro_3_0/portale/views.py` e `portale_hydro_3_0/portale/urls.py`.
 - Regole stato: >2h giallo, >6h rosso, assenza dati grigio, altrimenti verde.
+
+### Workflow LED (come diventa "attivo")
+- Il template renderizza il LED con `data-misuratore-id` per il misuratore corrente.
+- `led_status.js` fa polling ogni 60s su `/portale/api/led-status/`.
+- L'API ritorna `latest_measurement` per ogni misuratore (timestamp ISO).
+- Il JS calcola le ore trascorse dall'ultima misura e assegna la classe:
+  - `status-green` se <= 2h
+  - `status-orange` se > 2h
+  - `status-red` se > 6h
+  - `status-gray` se manca il dato o la data è invalida.
