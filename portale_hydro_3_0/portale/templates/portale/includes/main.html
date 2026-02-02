@@ -147,6 +147,16 @@
             <div class="chart-actions">
               <button class="chart-zoom" type="button" data-target="chart-flow-rate" aria-label="Zoom grafico portata">+</button>
               <button class="chart-reset" type="button" data-target="chart-flow-rate" aria-label="Reset zoom grafico portata">Reset</button>
+              <button
+                class="chart-info"
+                type="button"
+                data-decimation-info
+                aria-label="Informazioni sulla decimazione LTTB"
+                data-tooltip="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
+                title="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
+              >
+                i
+              </button>
             </div>
             <div class="chart-loader" aria-hidden="true">
               <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />

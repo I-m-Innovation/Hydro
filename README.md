@@ -52,3 +52,15 @@ Prima di leggere è bene sapere che comunque questo è il mio primo progetto dja
   - `status-orange` se > 2h
   - `status-red` se > 6h
   - `status-gray` se manca il dato o la data è invalida.
+
+### Decimazione dati (LTTB)
+- Il grafico `chart-flow-rate` usa la decimazione di Chart.js quando `useApi` è true, `type` è `line` e l'asse X è `linear`.
+- L'algoritmo LTTB (Largest Triangle Three Buckets) riduce i punti mantenendo la forma del segnale.
+- Funzionamento: mantiene primo/ultimo punto, divide i dati in bucket e per ogni bucket sceglie il punto che massimizza l'area del triangolo rispetto al punto scelto prima e alla media del bucket successivo.
+- Risultato: preserva trend e picchi più importanti rispetto a un semplice sampling uniforme.
+
+### Update grafici (flow-chart e curva di durata)
+- `chart-flow-rate` ora usa asse X lineare (timestamp in ms), tick solo su inizio/fine e tooltip in formato `DD/MM/YYYY HH:MM:ss`.
+- Logica gap: se tra due misure il salto supera 2h (24h/7d/1m) o 3 giorni (6m/1y/all), la linea si interrompe e viene mostrata una banda rossa semitrasparente.
+- Soglia decimazione per flow-chart configurabile (attualmente 1250 punti) e bottone info visibile solo quando attiva.
+- Curva di durata: linea verticale a 80%, linea orizzontale su y=0 e tick solo su 0/80/100 sull'asse X.
