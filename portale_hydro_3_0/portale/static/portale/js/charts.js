@@ -412,7 +412,7 @@ document.addEventListener("DOMContentLoaded", () => {
             fill: true,
             useApi: true,
             xScaleType: "linear",
-            xTitle: "Tempo",
+            xTitle: "",
             xTicksCallback: function (value) {
                 if (value === this.min || value === this.max) {
                     return formatTimestampFull(value);
@@ -773,7 +773,7 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         const applyRangeLabel = (timestamps) => {
-            if (!cfg.showRange || !timestamps.length) {
+            if (isFlowChart(cfg) || !cfg.showRange || !timestamps.length) {
                 return;
             }
             const first = timestamps[0];
@@ -939,7 +939,7 @@ document.addEventListener("DOMContentLoaded", () => {
                                 : parsedValues;
                         });
 
-                        if (!isHistogram(cfg)) {
+                        if (!isHistogram(cfg) && !isFlowChart(cfg)) {
                             applyRangeLabel(timestamps);
                         }
 
@@ -1046,7 +1046,9 @@ document.addEventListener("DOMContentLoaded", () => {
         }
 
         instances.set(cfg.id, chart);
-        applyRangeLabel(chart.data.labels || []);
+        if (!isFlowChart(cfg) && cfg.showRange) {
+            applyRangeLabel(chart.data.labels || []);
+        }
         return chart;
     };
 

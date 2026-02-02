@@ -18,8 +18,14 @@ def home(request):
     }
     return render(request, "portale/home.html", context)
 
+
 def facilities_map(request):
-    return render(request, "portale/facilities_map.html")
+    misuratori = tab_misuratori.objects.all()
+    return render(request, "portale/facilities_map.html", {
+        "misuratori": misuratori,
+        "title": "Facilities Map"
+    })
+
 
 def measurements_api(request):
     id_misuratore = request.GET.get("id_misuratore")
@@ -91,6 +97,7 @@ def measurements_api(request):
     }
     return JsonResponse(data)
 
+
 def duration_curve_api(request):
     t0 = time.perf_counter()
     id_misuratore = request.GET.get("id_misuratore")
@@ -136,6 +143,7 @@ def duration_curve_api(request):
         f"query_ms={(t1 - t0)*1000:.1f} total_ms={(t2 - t0)*1000:.1f}"
     )
     return JsonResponse(data)
+
 
 def flow_histogram_api(request):
     id_misuratore = request.GET.get("id_misuratore")
@@ -193,6 +201,7 @@ def flow_histogram_api(request):
         }
     )
 
+
 def misuratore_detail(request, id_misuratore):
     misuratore = (
         tab_misuratori.objects.filter(id_misuratore=id_misuratore)
@@ -216,27 +225,23 @@ def misuratore_detail(request, id_misuratore):
         name = misuratore.name
     else:
         name = "Unknown Misuratore"
-    
+
     misuratori = tab_misuratori.objects.only(
         "id_misuratore",
         "name",
         "is_active",
     )
-    base_qs = tab_measurements_clean.objects.filter(id_misuratore=id_misuratore) # qs = queryset
-    latest = base_qs.aggregate(max_ts=Max("data_misurazione"))["max_ts"]  
+    base_qs = tab_measurements_clean.objects.filter(
+        id_misuratore=id_misuratore)  # qs = queryset
+    latest = base_qs.aggregate(max_ts=Max("data_misurazione"))["max_ts"]
     misurazioni = base_qs.none()
-
-
 
     if latest:
         cutoff = latest - timedelta(hours=24)
         misurazioni = base_qs.filter(
             data_misurazione__gte=cutoff, data_misurazione__lte=latest
         ).order_by("data_misurazione")
-    
-    
-    
-    
+
     context = {
         "title": f"Misuratore {name}",
         "misuratori": misuratori,
@@ -246,6 +251,7 @@ def misuratore_detail(request, id_misuratore):
     }
     return render(request, "portale/misuratore_detail.html", context)
 
+
 def led_status_api(request):
     rows = (
         tab_measurements_clean.objects
@@ -253,14 +259,14 @@ def led_status_api(request):
         .annotate(latest_measurement=Max("data_misurazione"))
         .order_by("id_misuratore")
     )
-    
+
     data = {
-        "items" : [
+        "items": [
             {
-            "id_misuratore": row["id_misuratore"],
-            "latest_measurement": row["latest_measurement"].isoformat().replace("+00:00", "Z") if row["latest_measurement"] else None,
-            } 
-        for row in rows
+                "id_misuratore": row["id_misuratore"],
+                "latest_measurement": row["latest_measurement"].isoformat().replace("+00:00", "Z") if row["latest_measurement"] else None,
+            }
+            for row in rows
         ]
     }
     return JsonResponse(data)

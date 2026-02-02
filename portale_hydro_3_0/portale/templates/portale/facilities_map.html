@@ -1,7 +1,4 @@
-{% extends 'portale/base.html' %}
-{% load static %}
-
-{% block extra_head %}
+{% extends 'portale/base.html' %} {% load static %} {% block extra_head %}
 <link
   rel="stylesheet"
   href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -13,34 +10,76 @@
     display: none !important;
   }
 </style>
-{% endblock %}
-
-{% block content %}
+{% endblock %} {% block content %}
 <div class="map-container">
   <div id="map"></div>
 </div>
-{% endblock %}
+{% endblock %} 
 
 {% block extra_scripts %}
-<!-- Make sure you put this AFTER Leaflet's CSS -->
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-  crossorigin=""
-></script>
+  <!-- Make sure you put this AFTER Leaflet's CSS -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
 
-<script>
-  var map = L.map('map').setView([41.89017, 12.4924], 5);
+  <script>
+    var map = L.map('map').setView([41.89017, 12.4924], 5);
 
-  L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    maxZoom: 19,
-    attribution:
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-  }).addTo(map);
 
-  /* Marker statici per mantenere la vista */
-  var testMarker = L.marker([39.181682, 16.336984]).addTo(map);
-  testMarker.bindTooltip('I salto acquedotto Merone');
-  testMarker.bindPopup('<b>I salto acquedotto Merone</b>');
-</script>
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution:
+        '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+    }).addTo(map);
+
+    // Custom marker icons
+    var greenIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    var redIcon = L.icon({
+        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+        shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+        iconSize: [25, 41],
+        iconAnchor: [12, 41],
+        popupAnchor: [1, -34],
+        shadowSize: [41, 41]
+    });
+
+    // Aggiungi marker per ogni facility
+    {% for misuratore in misuratori %}
+        {% if misuratore.latitude and misuratore.longitude %}
+          var marker = L.marker([{{ misuratore.latitude }}, {{ misuratore.longitude }}], {
+              icon: {% if misuratore.is_active %}greenIcon{% else %}redIcon{% endif %}
+          }).addTo(map);
+
+        {% if misuratore.is_active %}
+          var statusClass = 'status-active';
+          var statusText = 'Attivo';
+        {% else %}
+          var statusClass = 'status-inactive';
+          var statusText = 'Non attivo';
+        {% endif %}
+
+        marker.bindPopup("<b>{{ misuratore.name }}</b><br>Località: <span>{{ misuratore.location }}</span></br><br>Status: <span class='" + statusClass + "'>" + statusText + "</span><br>");
+        marker.bindTooltip("{{ misuratore.name }}");
+        {% endif %}
+    {% endfor %}
+
+
+    /* Marker statici per mantenere la vista */
+    var testMarker = L.marker([39.18159520074817, 16.335823220802887]).addTo(map);
+    testMarker.bindTooltip('I salto acquedotto Merone');
+    testMarker.bindPopup('<b>I salto acquedotto Merone</b>');
+  </script>
+  
 {% endblock %}
+
+<!-- Merone I salto : Lat 39.18159520074817, Lon 16.335823220802887 -->

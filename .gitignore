@@ -26,6 +26,8 @@ db_manager/scripts/psql.log
 Thumbs.db
 .idea/
 .vscode/
+.prettierignore
+
 
 # Local databases
 *.sqlite3

@@ -59,6 +59,82 @@ Prima di leggere è bene sapere che comunque questo è il mio primo progetto dja
 - Funzionamento: mantiene primo/ultimo punto, divide i dati in bucket e per ogni bucket sceglie il punto che massimizza l'area del triangolo rispetto al punto scelto prima e alla media del bucket successivo.
 - Risultato: preserva trend e picchi più importanti rispetto a un semplice sampling uniforme.
 
+### Sistema di Visualizzazione Grafici (charts.js)
+
+#### Architettura Core
+- **File principale**: `portale_hydro_3_0/portale/static/portale/js/charts.js` (~1200 righe)
+- **Libreria**: Chart.js con plugin zoom e decimazione LTTB
+- **Gestione stato**: Map-based per istanze grafici e polling intervals
+- **Aggiornamento**: API polling ogni 60s solo per range 24h
+
+#### Tipologie di Grafici
+1. **Flow Rate (`chart-flow-rate`)**:
+   - Doppio dataset: raw e smoothed data
+   - Asse X temporale (timestamp in ms), Y portata (l/s)
+   - Decimazione automatica sopra 1250 punti
+   - Gap detection con interruzione linee e ombreggiatura
+   - Media mobile configurabile per range
+
+2. **Flow Histogram (`chart-fluid-velocity`)**:
+   - Grafico a barre per distribuzione portate
+   - Bins pre-calcolati dal backend con range start/end
+   - Tooltip con intervallo, percentuale e count punti
+   - Asse Y in percentuale, X in l/s
+
+3. **Duration Curve (`chart-curva-di-durata`)**:
+   - Curva durate/superamenti (0-100% tempo)
+   - Linea verticale fissa a 80% con calcolo Y dinamico
+   - Filtro valori < -50 l/s, tick solo su 0/80/100%
+   - Asse Y auto-scalato su min/max dataset
+
+#### Sistema di Gap Detection
+```javascript
+// Soglie temporali differenziate
+const GAP_THRESHOLD_SHORT_MS = 2 * 60 * 60 * 1000; // 2h per 24h/7d/1m
+const GAP_THRESHOLD_LONG_MS = 3 * 24 * 60 * 60 * 1000; // 3 giorni per 6m/1y/all
+
+// Due strategie per gestione gap
+buildFlowPointsWithGaps()      // Decimazione attiva: usa null/midpoint
+buildFlowPointsWithGapsShort() // Decimazione off: usa NaN per interrompere linee
+```
+
+#### Plugin Sistema
+- **hoverLinePlugin**: Linea verticale al passaggio mouse
+- **gapShadingPlugin**: Ombreggiatura rossa su gap temporali
+- **staticVLinePlugin**: Linee di riferimento con ticks personalizzati
+
+#### Gestione Performance
+- **Decimazione LTTB**: Algoritmo "Largest Triangle Three Buckets"
+  - Threshold: 1250 punti per flow-rate
+  - Preserva forma segnale riducendo dataset
+  - Info button mostrato solo quando attiva
+- **Parsing condizionale**: `parsing: false` solo con decimazione
+- **Update ottimizzato**: `chart.update("none")` per performance
+
+#### Sistema Range/Controlli
+- **Range buttons**: 24h, 7d, 1m, 6m, 1y, all
+- **Zoom**: Area drag, wheel zoom, pan su asse X
+- **Reset**: Ripristino zoom per grafico specifico
+- **Auto-refresh**: Solo range 24h, intervallo 60s
+
+#### Configurazione Dinamica
+- **API endpoints**: Differenziati per tipo grafico
+- **Labels range**: Solo flow-rate mostra date inizio/fine  
+- **Tooltip format**: Personalizzato per tipo dato
+- **Scale management**: Auto-fit con suggestedMin/Max
+
+#### Error Handling & Robustezza
+- Graceful fallback su errori API
+- Validazione dati con `Number.isFinite()`
+- Cleanup automatico istanze/polling
+- Gestione resize responsive
+
+### Update grafici (flow-chart e gap detection)
+- Risolto problema rendering per range brevi (24h/7d/1m): ora punti e gap vengono visualizzati correttamente
+- Implementata gestione differenziata gap: `NaN` per Chart.js senza decimazione, `null` con decimazione attiva
+- Eliminata label date dal grafico flow-rate per ridurre clutter visivo
+- Gap detection funziona su distanze temporali reali (non solo valori null nel dataset)
+
 ### Update grafici (flow-chart e curva di durata)
 - `chart-flow-rate` ora usa asse X lineare (timestamp in ms), tick solo su inizio/fine e tooltip in formato `DD/MM/YYYY HH:MM:ss`.
 - Logica gap: se tra due misure il salto supera 2h (24h/7d/1m) o 3 giorni (6m/1y/all), la linea si interrompe e viene mostrata una banda rossa semitrasparente.
