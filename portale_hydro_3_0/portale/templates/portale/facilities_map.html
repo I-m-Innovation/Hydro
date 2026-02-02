@@ -11,8 +11,18 @@
   }
 </style>
 {% endblock %} {% block content %}
-<div class="map-container">
-  <div id="map"></div>
+<div class="facilities-container">
+  <div class="misuratore-card">
+    <div class="card-title">Dettagli Misuratore</div>
+    <div id="misuratore-details">
+      <div class="no-selection">
+        Clicca su un marker nella mappa per visualizzare i dettagli del misuratore
+      </div>
+    </div>
+  </div>
+  <div class="map-container">
+    <div id="map"></div>
+  </div>
 </div>
 {% endblock %} 
 
@@ -26,7 +36,6 @@
 
   <script>
     var map = L.map('map').setView([41.89017, 12.4924], 5);
-
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
@@ -53,6 +62,43 @@
         shadowSize: [41, 41]
     });
 
+    // Function to update misuratore details card
+    function updateMisuratoreDetails(misuratore) {
+        var detailsContainer = document.getElementById('misuratore-details');
+        var statusClass = misuratore.is_active ? 'status-active' : 'status-inactive';
+        var statusText = misuratore.is_active ? 'Attivo' : 'Non attivo';
+        
+        detailsContainer.innerHTML = `
+            <div class="misuratore-info">
+                <h3>${misuratore.name}</h3>
+                <div class="info-item">
+                    <span class="info-label">ID:</span>
+                    <span class="info-value">${misuratore.id}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Località:</span>
+                    <span class="info-value">${misuratore.location || 'Non specificata'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Status:</span>
+                    <span class="info-value ${statusClass}">${statusText}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Latitudine:</span>
+                    <span class="info-value coordinates">${misuratore.latitude ? misuratore.latitude.toFixed(6) : 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Longitudine:</span>
+                    <span class="info-value coordinates">${misuratore.longitude ? misuratore.longitude.toFixed(6) : 'N/A'}</span>
+                </div>
+                <div class="info-item">
+                    <span class="info-label">Data creazione:</span>
+                    <span class="info-value">${new Date(misuratore.created_at).toLocaleDateString('it-IT')}</span>
+                </div>
+            </div>
+        `;
+    }
+
     // Aggiungi marker per ogni facility
     {% for misuratore in misuratori %}
         {% if misuratore.latitude and misuratore.longitude %}
@@ -70,14 +116,41 @@
 
         marker.bindPopup("<b>{{ misuratore.name }}</b><br>Località: <span>{{ misuratore.location }}</span></br><br>Status: <span class='" + statusClass + "'>" + statusText + "</span><br>");
         marker.bindTooltip("{{ misuratore.name }}");
+        
+        // Add click event to show details in card
+        marker.on('click', function() {
+            var misuratoreData = {
+                id: "{{ misuratore.id_misuratore }}",
+                name: "{{ misuratore.name }}",
+                location: "{{ misuratore.location|default:'' }}",
+                is_active: {{ misuratore.is_active|yesno:"true,false" }},
+                latitude: {{ misuratore.latitude|default:"null" }},
+                longitude: {{ misuratore.longitude|default:"null" }},
+                created_at: "{{ misuratore.created_at.isoformat }}"
+            };
+            updateMisuratoreDetails(misuratoreData);
+        });
         {% endif %}
     {% endfor %}
-
 
     /* Marker statici per mantenere la vista */
     var testMarker = L.marker([39.18159520074817, 16.335823220802887]).addTo(map);
     testMarker.bindTooltip('I salto acquedotto Merone');
     testMarker.bindPopup('<b>I salto acquedotto Merone</b>');
+    
+    // Add click event for static marker too
+    testMarker.on('click', function() {
+        var misuratoreData = {
+            id: "MERONE_001",
+            name: "I salto acquedotto Merone",
+            location: "Merone",
+            is_active: true,
+            latitude: 39.18159520074817,
+            longitude: 16.335823220802887,
+            created_at: new Date().toISOString()
+        };
+        updateMisuratoreDetails(misuratoreData);
+    });
   </script>
   
 {% endblock %}

@@ -901,14 +901,21 @@ a:hover {
   box-shadow: var(--shadow-1);
 }
 
+/* Facilities map specific styles */
+.facilities-container #map {
+  height: 100%;
+  width: 100%;
+  max-width: none;
+}
+
 /* Facility Status Classes */
 .status-active {
-  color: var(--color-green);
+  color: var(--color-success);
   font-weight: 600;
 }
 
 .status-inactive {
-  color: var(--color-red);
+  color: var(--color-danger);
   font-weight: 600;
 }
 
@@ -919,6 +926,29 @@ a:hover {
   align-items: center;
   padding: 2rem;
   height: 100%;
+}
+
+/* Facilities map container */
+.facilities-container {
+  position: fixed;
+  top: var(--header-height);
+  left: 0;
+  right: 0;
+  bottom: var(--footer-height);
+  display: flex;
+  gap: 12px;
+  padding: 12px;
+  background: var(--color-bg);
+}
+
+.facilities-container .map-container {
+  flex: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: var(--shadow-1);
+  padding: 0;
+  justify-content: stretch;
+  align-items: stretch;
 }
 
 /* Welcome Message */
@@ -995,4 +1025,72 @@ a:hover {
     flex-direction: column;
     align-items: flex-start;
   }
+}
+
+/* =========================================================
+   FACILITIES MAP SPECIFIC STYLES
+   ========================================================= */
+
+.misuratore-card {
+  width: 280px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border-alpha);
+  border-radius: 8px;
+  padding: 16px;
+  box-shadow: var(--shadow-1);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.card-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--color-text);
+  margin-bottom: 16px;
+  border-bottom: 2px solid var(--color-accent);
+  padding-bottom: 8px;
+}
+
+.misuratore-info {
+  margin-bottom: 16px;
+}
+
+.misuratore-info h3 {
+  margin: 0 0 12px 0;
+  color: var(--color-text);
+  font-size: 16px;
+}
+
+.info-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--color-surface-2);
+}
+
+.info-item:last-child {
+  border-bottom: none;
+}
+
+.info-label {
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+.info-value {
+  font-weight: 400;
+  color: var(--color-text);
+}
+
+.no-selection {
+  text-align: center;
+  color: var(--color-muted);
+  font-style: italic;
+  margin-top: 40px;
+}
+
+.coordinates {
+  font-family: monospace;
+  font-size: 14px;
 }
