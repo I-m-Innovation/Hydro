@@ -1,9 +1,5 @@
 Ultimo update - 29/01/2026
 
-Prima di leggere è bene sapere che comunque questo è il mio primo progetto django. Chiaramente ci saranno errori o logiche implementate dalla dubbia logica. Tuttavia, ho cercato di fare tutto in modo abbastanza pulito, usando nomi intuitivi e seguendo delle "buone" (opinabile) pratiche di progettazione. In ogni caso questo documento è più una guida e non è detto che tutto sia corretto. Quindi non prendetela come la Bibbia e chiedetevi sempre se quello che sto leggendo sia vero. Dubitate sempre insomma, non si sa mai. 
-
-
-
 
 # Problemi principali ancora presenti (non affrontati) 29/01/2026
 
