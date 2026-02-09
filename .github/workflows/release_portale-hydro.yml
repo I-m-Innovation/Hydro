@@ -1,0 +1,93 @@
+# Docs for the Azure Web Apps Deploy action: https://github.com/Azure/webapps-deploy
+# More GitHub Actions for Azure: https://github.com/Azure/actions
+# More info on Python, GitHub Actions, and Azure App Service: https://aka.ms/python-webapps-actions
+
+
+
+name: Build and deploy Python app to Azure Web App - portale-hydro
+
+on:
+  push:
+    branches:
+      - release
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: portale-hydro
+  PYTHON_VERSION: "3.14"   # Consigliato. Allinea questo valore al runtime scelto in App Service.
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      # Build check (optional but useful): verifies requirements install correctly
+      - name: Create virtualenv and install dependencies (check)
+        run: |
+          python -m venv antenv
+          source antenv/bin/activate
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # Upload the whole repo (monorepo) so Django subfolder + dbmanager are deployed together.
+      # Exclude the local venv and some heavy folders.
+      - name: Upload artifact for deployment jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-app
+          path: |
+            .
+            !antenv/
+            !.git/
+            !.github/
+            !**/__pycache__/
+            !**/*.pyc
+
+  deploy:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Download artifact from build job
+        uses: actions/download-artifact@v4
+        with:
+          name: python-app
+          path: ./app
+
+      - name: Login to Azure (OIDC)
+        uses: azure/login@v2
+        with:
+          # AZURE_CLIENT_ID, AZURE_TENANT_ID, AZURE_SUBSCRIPTION_ID
+          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_27583C746F374BC2BF08457C8591ED46 }}
+          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_BA6645B090A849E684651BBFFB8B3CF2 }}
+          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_4C720328A23046FB8EE9CA9FCFC9061D }}
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          slot-name: Production
+          package: ./app
+
+
+
