@@ -124,15 +124,6 @@
 
       <!-- Right column: Plot -->
       <div class="facility-plot">
-        <div class="plot-and-range">
-          <div class="chart-range chart-range-vertical">
-            <button class="range-btn is-active" type="button" data-range="24h">24h</button>
-            <button class="range-btn" type="button" data-range="7d">7d</button>
-            <button class="range-btn" type="button" data-range="1m">1m</button>
-            <button class="range-btn" type="button" data-range="6m">6m</button>
-            <button class="range-btn" type="button" data-range="1y">1y</button>
-            <button class="range-btn" type="button" data-range="all">all</button>
-          </div>
         <!--
         <div class="facility-no-data">
           <strong>Nessun grafico disponibile per questo impianto.</strong><br />
@@ -144,59 +135,73 @@
         -->
         <div class="facility-plot-grid">
           <div class="chart-card chart-flow-card">
-            <div class="chart-actions">
-              <button class="chart-zoom" type="button" data-target="chart-flow-rate" aria-label="Zoom grafico portata">+</button>
-              <button class="chart-reset" type="button" data-target="chart-flow-rate" aria-label="Reset zoom grafico portata">Reset</button>
-              <button class="chart-refresh" type="button" data-target="chart-flow-rate" aria-label="Aggiorna grafico portata">Aggiorna</button>
-              <button
-                class="chart-info"
-                type="button"
-                data-decimation-info
-                aria-label="Informazioni sulla decimazione LTTB"
-                data-tooltip="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
-                title="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
-              >
-                i
-              </button>
+            <div class="chart-card-header">
+              <div class="chart-header-range">
+                <button class="range-btn is-active" type="button" data-range="24h">24h</button>
+                <button class="range-btn" type="button" data-range="7d">7d</button>
+                <button class="range-btn" type="button" data-range="1m">1m</button>
+                <button class="range-btn" type="button" data-range="6m">6m</button>
+                <button class="range-btn" type="button" data-range="1y">1y</button>
+                <button class="range-btn" type="button" data-range="all">all</button>
+              </div>
+              <div class="chart-actions">
+                <button
+                  class="chart-info"
+                  type="button"
+                  data-decimation-info
+                  aria-label="Informazioni sulla decimazione LTTB"
+                  data-tooltip="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
+                  title="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
+                >i</button>
+                <button class="chart-zoom" type="button" data-target="chart-flow-rate" aria-label="Zoom grafico portata">+</button>
+                <button class="chart-reset" type="button" data-target="chart-flow-rate" aria-label="Reset zoom grafico portata">Reset</button>
+                <button class="chart-refresh" type="button" data-target="chart-flow-rate" aria-label="Aggiorna grafico portata">Aggiorna</button>
+              </div>
             </div>
-            <div class="chart-loader" aria-hidden="true">
-              <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+            <div class="chart-card-body chart-body-grid">
+              <div class="chart-body-canvas">
+                <div class="chart-loader" aria-hidden="true">
+                  <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+                </div>
+                <canvas
+                  id="chart-flow-rate"
+                  aria-label="Grafico portata"
+                  role="img"
+                  data-misuratore="{{misuratore.id_misuratore}}"
+                  data-avg-24h="{{ misuratore_stats.avg_24h|unlocalize }}"
+                  data-avg-7d="{{ misuratore_stats.avg_7d|unlocalize }}"
+                  data-avg-1m="{{ misuratore_stats.avg_30d|unlocalize }}"
+                  data-avg-6m=""
+                  data-avg-1y="{{ misuratore_stats.avg_360d|unlocalize }}"
+                  data-avg-all="{{ misuratore_stats.avg_all_time|unlocalize }}"
+                ></canvas>
+              </div>
             </div>
-            <canvas
-              id="chart-flow-rate"
-              aria-label="Grafico portata"
-              role="img"
-              data-misuratore="{{misuratore.id_misuratore}}"
-              data-avg-24h="{{ misuratore_stats.avg_24h|unlocalize }}"
-              data-avg-7d="{{ misuratore_stats.avg_7d|unlocalize }}"
-              data-avg-1m="{{ misuratore_stats.avg_30d|unlocalize }}"
-              data-avg-6m=""
-              data-avg-1y="{{ misuratore_stats.avg_360d|unlocalize }}"
-              data-avg-all="{{ misuratore_stats.avg_all_time|unlocalize }}"
-            ></canvas>
           </div>
           <div class="chart-card">
-            <div class="chart-actions">
-              <button class="chart-zoom" type="button" data-target="chart-fluid-velocity" aria-label="Zoom grafico velocita">+</button>
-              <button class="chart-reset" type="button" data-target="chart-fluid-velocity" aria-label="Reset zoom grafico velocita">Reset</button>
-              <button class="chart-refresh" type="button" data-target="chart-fluid-velocity" aria-label="Aggiorna grafico velocita">Aggiorna</button>
+            <div class="chart-card-header">
+              <div class="chart-actions">
+                <button class="chart-zoom" type="button" data-target="chart-fluid-velocity" aria-label="Zoom grafico velocita">+</button>
+                <button class="chart-reset" type="button" data-target="chart-fluid-velocity" aria-label="Reset zoom grafico velocita">Reset</button>
+                <button class="chart-refresh" type="button" data-target="chart-fluid-velocity" aria-label="Aggiorna grafico velocita">Aggiorna</button>
+              </div>
             </div>
-            <div class="chart-loader" aria-hidden="true">
-              <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+            <div class="chart-card-body">
+              <div class="chart-loader" aria-hidden="true">
+                <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+              </div>
+              <canvas
+                id="chart-fluid-velocity"
+                aria-label="Grafico velocita"
+                role="img"
+                data-misuratore="{{misuratore.id_misuratore}}"
+              ></canvas>
             </div>
-            <canvas
-              id="chart-fluid-velocity"
-              aria-label="Grafico velocita"
-              role="img"
-              data-misuratore="{{misuratore.id_misuratore}}"
-            ></canvas>
           </div>
           <div class="chart-card">
-            <div class="chart-actions">
-              <button class="chart-zoom" type="button" data-target="chart-curva-di-durata" aria-label="Zoom grafico curva di durata">+</button>
-              <button class="chart-reset" type="button" data-target="chart-curva-di-durata" aria-label="Reset zoom grafico curva di durata">Reset</button>
-              <button class="chart-refresh" type="button" data-target="chart-curva-di-durata" aria-label="Aggiorna grafico curva di durata">Aggiorna</button>
-              <button
+            <div class="chart-card-header">
+              <div class="chart-actions">
+                <button
                 class="chart-info"
                 type="button"
                 aria-label="Informazioni sul downsampling della curva di durata"
@@ -205,8 +210,14 @@
               >
                 i
               </button>
+              <button class="chart-zoom" type="button" data-target="chart-curva-di-durata" aria-label="Zoom grafico curva di durata">+</button>
+              <button class="chart-reset" type="button" data-target="chart-curva-di-durata" aria-label="Reset zoom grafico curva di durata">Reset</button>
+              <button class="chart-refresh" type="button" data-target="chart-curva-di-durata" aria-label="Aggiorna grafico curva di durata">Aggiorna</button>
+        
+              </div>
             </div>
-            <div class="chart-loader" aria-hidden="true">
+            <div class="chart-card-body">
+              <div class="chart-loader" aria-hidden="true">
               <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
             </div>
             <canvas
@@ -221,8 +232,8 @@
               data-avg-1y="{{ misuratore_stats.avg_360d|unlocalize }}"
               data-avg-all="{{ misuratore_stats.avg_all_time|unlocalize }}"
             ></canvas>
+            </div>
           </div>
-        </div>
         </div>
       </div>
     </div>
