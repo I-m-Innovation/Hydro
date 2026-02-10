@@ -75,16 +75,29 @@ def measurements_api(request):
         "all": 20000,
     }
     max_points = max_points_by_range.get(range_key, 25000)
-    rows_list = list(rows)
-    if max_points and len(rows_list) > max_points:
-        step = max(1, len(rows_list) // max_points)
-        rows_list = rows_list[::step]
+    step = 1
+    if max_points:
+        total = rows.count()
+        if total == 0:
+            return JsonResponse(
+                {
+                    "timestamps": [],
+                    "flow_ls_raw": [],
+                    "flow_ls_smoothed": [],
+                    "is_outlier": [],
+                }
+            )
+        step = max(1, total // max_points)
 
     timestamps = []
     flow_raw = []
     flow_smoothed = []
     outliers = []
-    for data_misurazione, flow_ls_raw, flow_ls_smoothed, is_outlier in rows_list:
+    for i, (data_misurazione, flow_ls_raw, flow_ls_smoothed, is_outlier) in enumerate(
+        rows.iterator(chunk_size=5000)
+    ):
+        if step > 1 and i % step != 0:
+            continue
         timestamps.append(data_misurazione.isoformat())
         flow_raw.append(flow_ls_raw)
         flow_smoothed.append(flow_ls_smoothed)
