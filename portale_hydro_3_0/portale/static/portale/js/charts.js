@@ -1049,9 +1049,10 @@ document.addEventListener("DOMContentLoaded", () => {
                     });
             };
 
+            chart._reload = loadApiData;
             loadApiData();
 
-            if (rangeKey === "24h") {
+            if (rangeKey === "24h" && isFlowChart(cfg)) {
                 const intervalId = window.setInterval(loadApiData, POLL_INTERVAL_MS);
                 pollingIntervals.set(cfg.id, intervalId);
             }
@@ -1081,17 +1082,37 @@ document.addEventListener("DOMContentLoaded", () => {
         });
     };
 
-    const initCharts = (rangeKey) => {
-        instances.forEach((chartInstance) => {
-            chartInstance.destroy();
-        });
-        instances.clear();
-        pollingIntervals.forEach((intervalId) => {
+    const destroyChartById = (id) => {
+        const existing = instances.get(id);
+        if (existing) {
+            console.log(`[charts] destroy ${id}`);
+            existing.destroy();
+            instances.delete(id);
+        }
+        const intervalId = pollingIntervals.get(id);
+        if (intervalId) {
+            console.log(`[charts] clear polling ${id}`);
             window.clearInterval(intervalId);
-        });
-        pollingIntervals.clear();
+            pollingIntervals.delete(id);
+        }
+    };
+
+    const initCharts = (rangeKey) => {
+        console.log(`[charts] initCharts range=${rangeKey}`);
         charts.forEach((cfg) => {
-            createChart(cfg, rangeKey);
+            const shouldRefresh = isFlowChart(cfg);
+            if (shouldRefresh) {
+                console.log(`[charts] refresh flow chart ${cfg.id}`);
+                destroyChartById(cfg.id);
+                createChart(cfg, rangeKey);
+                return;
+            }
+            if (!instances.has(cfg.id)) {
+                console.log(`[charts] create static chart ${cfg.id}`);
+                createChart(cfg, rangeKey);
+            } else {
+                console.log(`[charts] keep static chart ${cfg.id}`);
+            }
         });
     };
 
@@ -1120,6 +1141,20 @@ document.addEventListener("DOMContentLoaded", () => {
             const targetChart = targetId ? instances.get(targetId) : null;
             if (targetChart && typeof targetChart.resetZoom === "function") {
                 targetChart.resetZoom();
+            }
+        });
+    });
+
+    const refreshButtons = grid.querySelectorAll(".chart-refresh");
+    refreshButtons.forEach((button) => {
+        button.addEventListener("click", () => {
+            const targetId = button.getAttribute("data-target");
+            const targetChart = targetId ? instances.get(targetId) : null;
+            if (targetChart && typeof targetChart._reload === "function") {
+                console.log(`[charts] manual refresh ${targetId}`);
+                targetChart._reload();
+            } else {
+                console.log(`[charts] manual refresh skipped ${targetId}`);
             }
         });
     });

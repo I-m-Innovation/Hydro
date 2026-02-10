@@ -16,6 +16,7 @@ Ultimo update - 09/02/2026
 - Throttle per device con stato in RAM: LAST_EVENT_TS_BY_ID cresce senza limite se i device sono tanti e non ha scadenza. Con mesi di runtime può consumare RAM. main_00.py
 - Threading senza shutdown pulito: i consumer sono in thread daemon, quindi in stop forzato non hai garanzie su flush/checkpoint/close. main_00.py
 - Nessun controllo su payload invalido parziale: se values è dict ma contiene misure non conformi, salti semplicemente senza logging strutturato; è difficile capire quali device generano dati sporchi. main_00.py
+- OOM su endpoint `measurements_api`: uso di `list(rows)` materializza tutte le righe in RAM prima del downsampling. Su range grandi può mandare in out-of-memory. `portale_hydro_3_0/portale/views.py`
 - Se vuoi, posso affrontarli in ordine di impatto con cambi minimi (pool connessioni + retry/backoff + cleanup state).
 
 
