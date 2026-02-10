@@ -6,7 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
     }
 
     const API_ENDPOINT = '/portale/api/led-status/';
-    const REFRESH_INTERVAL = 60000; // 60 seconds
+    const REFRESH_INTERVAL = 280000; // 280 seconds
 
     const setLedStatus = (ledElement, status) => {
         ledElement.classList.remove("status-green", "status-orange", "status-red", "status-gray");
