@@ -1179,11 +1179,6 @@ document.addEventListener("DOMContentLoaded", () => {
             const cards = grid.querySelectorAll(".chart-card");
             if (!isZoomed) {
                 grid.classList.add("is-zoomed");
-                const gridHeight = grid.clientHeight;
-                const footerGap = 16;
-                if (gridHeight) {
-                    grid.style.height = `${gridHeight}px`;
-                }
                 cards.forEach((card) => {
                     if (card === targetCard) {
                         card.classList.add("is-zoomed");
@@ -1194,21 +1189,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     }
                 });
                 button.textContent = "Esci";
-                if (gridHeight && targetCard) {
-                    const zoomHeight = Math.max(0, gridHeight - footerGap);
-                    targetCard.style.height = `${zoomHeight}px`;
-                    const canvas = targetCard.querySelector("canvas");
-                    if (canvas) {
-                        canvas.style.height = "100%";
-                    }
-                }
             } else {
                 grid.classList.remove("is-zoomed");
-                grid.style.height = "";
                 cards.forEach((card) => {
                     card.classList.remove("is-zoomed");
                     card.classList.remove("is-dim");
-                    card.style.height = "";
                 });
                 zoomButtons.forEach((btn) => {
                     btn.textContent = "Zoom";
@@ -1217,19 +1202,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
             requestAnimationFrame(() => {
                 instances.forEach((chartInstance) => {
-                    if (chartInstance?.canvas) {
-                        chartInstance.canvas.style.width = "100%";
-                        chartInstance.canvas.style.height = "100%";
-                        chartInstance.canvas.removeAttribute("width");
-                        chartInstance.canvas.removeAttribute("height");
+                    const canvas = chartInstance?.canvas;
+                    if (canvas) {
+                        canvas.style.width = "";
+                        canvas.style.height = "";
+                        canvas.removeAttribute("width");
+                        canvas.removeAttribute("height");
                     }
                     chartInstance.resize();
                 });
-                setTimeout(() => {
-                    instances.forEach((chartInstance) => {
-                        chartInstance.resize();
-                    });
-                }, 0);
             });
         });
     });
