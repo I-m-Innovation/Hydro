@@ -16,9 +16,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const LONG_GAP_RANGES = new Set(["6m", "1y", "all"]);
 
     const grid = document.querySelector(".facility-plot-grid");
+    const apiLoadStatus = document.getElementById("api-load-status");
     const instances = new Map();
     const pollingIntervals = new Map();
     let apiQueue = Promise.resolve();
+    let pendingInitialLoads = 0;
+    let initialLoadActive = true;
 
     const isFlowChart = (cfg) => cfg.id === "chart-flow-rate";
     const isDurationCurve = (cfg) => cfg.apiMode === "duration_curve";
@@ -593,6 +596,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const setLoading = (isLoading) => {
             chartCard?.classList.toggle("is-loading", isLoading);
         };
+        const setApiLoadStatus = (isLoading) => {
+            if (!apiLoadStatus) {
+                return;
+            }
+            apiLoadStatus.classList.toggle("is-hidden", !isLoading);
+        };
         const setNoDataVisible = (isVisible) => {
             if (!noDataMessage) {
                 return;
@@ -853,7 +862,11 @@ document.addEventListener("DOMContentLoaded", () => {
                     ? apiBase
                     : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
 
-            const enqueueApiLoad = (task) => {
+            const enqueueApiLoad = (task, isInitial = false) => {
+                if (isInitial) {
+                    pendingInitialLoads += 1;
+                    setApiLoadStatus(true);
+                }
                 apiQueue = apiQueue
                     .then(task)
                     .catch(() => {})
@@ -861,7 +874,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return apiQueue;
             };
 
-            const loadApiData = () => enqueueApiLoad(() => {
+            const loadApiData = (isInitial = false) => enqueueApiLoad(() => {
                 setLoading(true);
                 return fetchJsonWithRetry(apiUrl, 3, 1000)
                     .then((data) => {
@@ -1093,11 +1106,18 @@ document.addEventListener("DOMContentLoaded", () => {
                     })
                     .finally(() => {
                         setLoading(false);
+                        if (isInitial) {
+                            pendingInitialLoads = Math.max(0, pendingInitialLoads - 1);
+                            if (pendingInitialLoads === 0 && initialLoadActive) {
+                                initialLoadActive = false;
+                                setApiLoadStatus(false);
+                            }
+                        }
                     });
-            });
+            }, isInitial);
 
             chart._reload = loadApiData;
-            loadApiData();
+            loadApiData(initialLoadActive);
 
             if (rangeKey === "24h" && isFlowChart(cfg)) {
                 const intervalId = window.setInterval(loadApiData, POLL_INTERVAL_MS);
