@@ -11,7 +11,7 @@ from db_manager.jobs.refresh_duration_curve_mv import refresh_duration_curve_mv
 from db_manager.jobs.refresh_flow_histogram import refresh_flow_histogram
 from db_manager.jobs.refresh_mv_flow_daily_avg import refresh_mv_flow_daily_avg
 
-from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_MV, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ
+from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ, DURATION_CURVE_MV_REFRESH_HOUR, DURATION_CURVE_MV_REFRESH_MINUTE, DURATION_CURVE_MV_REFRESH_TZ
 
 
 from time import sleep
@@ -40,6 +40,35 @@ def start_refresh_mv_flow_daily_avg_nightly(hour=MV_FLOW_DAILY_AVG_REFRESH_HOUR,
                 print(f"Error executing refresh mv_flow_daily_avg job {i}: {e}")
                 sleep(60)  # Sleep for a minute before retrying in case of error
     print(f"[scheduler] refresh_mv_flow_daily_avg_nightly started (every day at {hour:02d}:{minute:02d} {tz_name})")
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+
+def start_refresh_duration_curve_mv_nightly(hour=DURATION_CURVE_MV_REFRESH_HOUR, minute=DURATION_CURVE_MV_REFRESH_MINUTE, tz_name=DURATION_CURVE_MV_REFRESH_TZ):
+    # runs refresh_duration_curve_mv every night at the specified hour and minute in the specified timezone
+    def loop():
+        tz = pytz.timezone(tz_name)
+        i = 1
+        while True:
+            try: 
+                now = datetime.now(tz)
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target <= now:
+                    target += timedelta(days=1)
+
+                sleep_seconds = (target - now).total_seconds()
+                print(f"Refresh duration_curve_mv job {i} sleeping for {sleep_seconds}.")
+                sleep(sleep_seconds)
+
+                refresh_duration_curve_mv()
+                print(f"Refresh duration_curve_mv job {i} executed successfully.")
+                i += 1
+            except Exception as e:
+                print(f"Error executing refresh duration_curve_mv job {i}: {e}")
+                sleep(60)  # Sleep for a minute before retrying in case of error
+    print(
+        "[scheduler] refresh_duration_curve_mv_nightly started "
+        f"(every day at {hour:02d}:{minute:02d} {tz_name})"
+    )
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
 
@@ -92,23 +121,6 @@ def start_clean_measurements_scheduler(interval_seconds=300):
             sleep(interval_seconds)
     # start periodic measurements cleaning
     print(f"[scheduler] clean_measurements started (every {interval_seconds}s)")
-    thread = threading.Thread(target=loop, daemon=True)
-    thread.start()
-
-def start_refresh_mv_scheduler(interval_seconds=86400):
-    # runs materialized view refresh in a background thread on a fixed interval
-    def loop():
-        i = 1
-        while True:
-            try: 
-                refresh_duration_curve_mv()
-                print(f"Refresh duration curve MV job {i} executed successfully.")
-                i += 1
-            except Exception as e:
-                print(f"Error executing refresh duration curve MV job {i}: {e}")
-            sleep(interval_seconds)
-    # start periodic materialized view refresh
-    print(f"[scheduler] refresh_duration_curve_mv started (every {interval_seconds}s)")
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
 
@@ -180,7 +192,7 @@ def main():
     start_transform_scheduler(SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM) 
     start_refresh_stats_scheduler(SECONDS_BETWEEN_REFRESH_STATS) 
     start_clean_measurements_scheduler(SECONDS_BETWEEN_CLEAN_MEASUREMENTS)
-    start_refresh_mv_scheduler(SECONDS_BETWEEN_REFRESH_MV)
+    start_refresh_duration_curve_mv_nightly()
     start_refresh_flow_histogram_scheduler(SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM)
     start_refresh_mv_flow_daily_avg_nightly()
     start_consumers(eventhub_configs)
