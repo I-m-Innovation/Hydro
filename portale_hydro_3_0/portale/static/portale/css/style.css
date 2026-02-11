@@ -812,6 +812,17 @@ body.sidebar-collapsed #lista-impianti {
   display: none;
 }
 
+.api-load-status {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #fff3cd;
+  color: #7a4a00;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid #f5d58f;
+}
+
 /* =========================================================
    IFRAME CONTAINER (il tuo attuale)
    - Lascio la tua struttura, ma EVITO il transform:scale che
