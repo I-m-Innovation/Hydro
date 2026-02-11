@@ -410,18 +410,22 @@ def misuratore_detail(request, id_misuratore):
 
 @login_required
 def led_status_api(request):
-    rows = (
-        tab_measurements_clean.objects
-        .values("id_misuratore")
-        .annotate(latest_measurement=Max("data_misurazione"))
-        .order_by("id_misuratore")
-    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id_misuratore, name, latest_measurement
+            FROM hydro.mv_led_status
+            ORDER BY id_misuratore
+            """
+        )
+        rows = cursor.fetchall()
 
     data = {
         "items": [
             {
-                "id_misuratore": row["id_misuratore"],
-                "latest_measurement": row["latest_measurement"].isoformat().replace("+00:00", "Z") if row["latest_measurement"] else None,
+                "id_misuratore": row[0],
+                "name": row[1],
+                "latest_measurement": row[2].isoformat().replace("+00:00", "Z") if row[2] else None,
             }
             for row in rows
         ]
