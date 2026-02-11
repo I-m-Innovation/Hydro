@@ -73,6 +73,27 @@ document.addEventListener("DOMContentLoaded", () => {
         return Number.isFinite(parsed) ? parsed : null;
     };
 
+    const fetchJsonWithRetry = async (url, retries = 3, delayMs = 2000, maxDelayMs = 20000) => {
+        let lastError = null;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            try {
+                const response = await fetch(url, { cache: "no-store" });
+                const text = await response.text();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+                }
+                return JSON.parse(text);
+            } catch (err) {
+                lastError = err;
+                if (attempt < retries) {
+                    const backoff = Math.min(maxDelayMs, delayMs * (2 ** attempt));
+                    await new Promise((resolve) => setTimeout(resolve, backoff));
+                }
+            }
+        }
+        throw lastError || new Error("Unknown fetch error");
+    };
+
     const computeYAtX = (xs, ys, xTarget) => {
         if (!Array.isArray(xs) || !Array.isArray(ys)) {
             return null;
@@ -556,9 +577,26 @@ document.addEventListener("DOMContentLoaded", () => {
         const decimationInfoButton = chartCard?.querySelector(
             "[data-decimation-info]",
         );
+        const chartBody = chartCard?.querySelector(".chart-card-body");
+        let noDataMessage = chartCard?.querySelector(".chart-no-data");
+
+        if (!noDataMessage && chartBody) {
+            noDataMessage = document.createElement("div");
+            noDataMessage.className = "facility-no-data chart-no-data is-hidden";
+            noDataMessage.innerHTML =
+                "<strong>Nessun dato disponibile.</strong><br />" +
+                "<span class='facility-no-data-text'>Riprova piu tardi.</span>";
+            chartBody.appendChild(noDataMessage);
+        }
 
         const setLoading = (isLoading) => {
             chartCard?.classList.toggle("is-loading", isLoading);
+        };
+        const setNoDataVisible = (isVisible) => {
+            if (!noDataMessage) {
+                return;
+            }
+            noDataMessage.classList.toggle("is-hidden", !isVisible);
         };
 
         const datasetConfigs = cfg.datasets || [
@@ -816,13 +854,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
             const loadApiData = () => {
                 setLoading(true);
-                fetch(apiUrl)
-                    .then((response) => {
-                        if (!response.ok) {
-                            throw new Error("API error");
-                        }
-                        return response.json();
-                    })
+                fetchJsonWithRetry(apiUrl, 3, 1000)
                     .then((data) => {
                         console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
 
@@ -834,6 +866,11 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (!Array.isArray(timestamps)) {
                             return;
                         }
+                        if (timestamps.length === 0) {
+                            setNoDataVisible(true);
+                            return;
+                        }
+                        setNoDataVisible(false);
 
                         const xValues = isFlowChart(cfg)
                             ? timestamps.map(toMillis)
@@ -1041,7 +1078,8 @@ document.addEventListener("DOMContentLoaded", () => {
                             }, 0);
                         }
                     })
-                    .catch(() => {
+                    .catch((error) => {
+                        console.error(`[charts] ${cfg.id} API failed:`, error);
                         // Keep existing chart if API fails.
                     })
                     .finally(() => {

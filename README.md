@@ -20,6 +20,22 @@ Ultimo update - 11/02/2026
 - Aggiunti log diagnostici su source, righe e punti restituiti.
 - Rimossa logica di cutoff non utilizzata per `6m/1y` nel path raw.
 
+### DB Manager - Refresh curve di durata
+- Refresh MV `mv_flow_duration_curve_daily` spostato a schedulazione notturna (03:00 Europe/Rome).
+- Parametri in `db_manager/config/settings.py`:
+  - `DURATION_CURVE_MV_REFRESH_HOUR`
+  - `DURATION_CURVE_MV_REFRESH_MINUTE`
+  - `DURATION_CURVE_MV_REFRESH_TZ`
+- Rimossa la schedulazione ogni 20s (`SECONDS_BETWEEN_REFRESH_MV`).
+
+### Frontend - Affidabilità fetch e messaggi
+- `charts.js`: retry con backoff esponenziale sui fetch API; log errori quando l'API fallisce.
+- `charts.js`: se i dati sono vuoti, mostra messaggio "Nessun dato disponibile" senza azzerare le etichette.
+- `led_status.js`: retry con 3 tentativi aggiuntivi prima di impostare il LED su grigio.
+
+### Frontend - Info grafico portata
+- Aggiunto pulsante info nel grafico portata per spiegare che `6m/1y/all` mostrano medie giornaliere per ottimizzazione.
+
 ## Ultimo update - 09/02/2026
 
 ### Ottimizzazione Throttling EventHub
