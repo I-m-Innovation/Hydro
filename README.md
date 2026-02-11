@@ -1,4 +1,24 @@
-Ultimo update - 09/02/2026
+Ultimo update - 11/02/2026
+
+## Ultimo update - 11/02/2026
+
+### Backend - Materialized View per range lunghi
+- Creata MV `hydro.mv_flow_daily_avg` con medie giornaliere di `flow_ls_raw` e `flow_ls_smoothed`.
+- Aggiunti script SQL:
+  - `db_manager/scripts/ensure_mv_flow_daily_avg.sql`
+  - `db_manager/scripts/refresh_mv_flow_daily_avg.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_flow_daily_avg.py`.
+- Scheduler notturno (02:00 Europe/Rome) configurato in `db_manager/run.py`.
+- Parametri schedulazione in `db_manager/config/settings.py`:
+  - `MV_FLOW_DAILY_AVG_REFRESH_HOUR`
+  - `MV_FLOW_DAILY_AVG_REFRESH_MINUTE`
+  - `MV_FLOW_DAILY_AVG_REFRESH_TZ`
+- Check MV aggiunto allo startup (`db_manager/db/schema.py` + `db_manager/run.py`).
+
+### Backend - Endpoint misure
+- `measurements_api` usa la MV per i range lunghi (`6m`, `1y`, `all`) e la tabella raw per (`24h`, `7d`, `1m`).
+- Aggiunti log diagnostici su source, righe e punti restituiti.
+- Rimossa logica di cutoff non utilizzata per `6m/1y` nel path raw.
 
 ## Ultimo update - 09/02/2026
 
