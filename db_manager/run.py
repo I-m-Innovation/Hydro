@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from db_manager.db.conn import get_conn
-from db_manager.db.schema import ensure_raw_table, ensure_etl_state_table, ensure_measurements_index, ensure_flow_histogram_table, ensure_mv_flow_daily_avg
+from db_manager.db.schema import ensure_raw_table, ensure_etl_state_table, ensure_measurements_index, ensure_flow_histogram_table, ensure_mv_flow_daily_avg, ensure_mv_led_status
 from db_manager.jobs.ingest_eventhub import load_eventhub_configs, start_consumers
 from db_manager.jobs.transform_raw import transform_raw_to_measurements
 from db_manager.jobs.refresh_stats import refresh_stats
@@ -10,8 +10,9 @@ from db_manager.jobs.clean_measurements import clean_measurements
 from db_manager.jobs.refresh_duration_curve_mv import refresh_duration_curve_mv
 from db_manager.jobs.refresh_flow_histogram import refresh_flow_histogram
 from db_manager.jobs.refresh_mv_flow_daily_avg import refresh_mv_flow_daily_avg
+from db_manager.jobs.refresh_mv_led_status import refresh_mv_led_status
 
-from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ, DURATION_CURVE_MV_REFRESH_HOUR, DURATION_CURVE_MV_REFRESH_MINUTE, DURATION_CURVE_MV_REFRESH_TZ
+from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, SECONDS_BETWEEN_REFRESH_LED_STATUS, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ, DURATION_CURVE_MV_REFRESH_HOUR, DURATION_CURVE_MV_REFRESH_MINUTE, DURATION_CURVE_MV_REFRESH_TZ
 
 
 from time import sleep
@@ -141,6 +142,22 @@ def start_refresh_flow_histogram_scheduler(interval_seconds=3600):
     thread = threading.Thread(target=loop, daemon=True)
     thread.start()
 
+def start_refresh_led_status_scheduler(interval_seconds=60):
+    # runs led status MV refresh in a background thread on a fixed interval
+    def loop():
+        i = 1
+        while True:
+            try:
+                refresh_mv_led_status()
+                print(f"Refresh mv_led_status job {i} executed successfully.")
+                i += 1
+            except Exception as e:
+                print(f"Error executing refresh mv_led_status job {i}: {e}")
+            sleep(interval_seconds)
+    print(f"[scheduler] refresh mv_led_status started (every {interval_seconds}s)")
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+
 def main():
     print(r"""
  __        __   _                            _         ____  ____      __  __                                  
@@ -172,10 +189,11 @@ def main():
         ensure_measurements_index()
         ensure_flow_histogram_table()
         ensure_mv_flow_daily_avg()
+        ensure_mv_led_status()
         print(
             "\nSchema checks completed: "
             f"{RAW_TABLE_NAME}, etl_state, measurements_index, "
-            "flow_histogram, mv_flow_daily_avg.\n"
+            "flow_histogram, mv_flow_daily_avg, mv_led_status.\n"
         )
     except Exception as e:
         print(f"Error creating/checking table {RAW_TABLE_NAME}: {e}")
@@ -195,6 +213,7 @@ def main():
     start_refresh_duration_curve_mv_nightly()
     start_refresh_flow_histogram_scheduler(SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM)
     start_refresh_mv_flow_daily_avg_nightly()
+    start_refresh_led_status_scheduler(SECONDS_BETWEEN_REFRESH_LED_STATUS)
     start_consumers(eventhub_configs)
 
 
