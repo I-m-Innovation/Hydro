@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const grid = document.querySelector(".facility-plot-grid");
     const instances = new Map();
     const pollingIntervals = new Map();
+    let apiQueue = Promise.resolve();
 
     const isFlowChart = (cfg) => cfg.id === "chart-flow-rate";
     const isDurationCurve = (cfg) => cfg.apiMode === "duration_curve";
@@ -852,9 +853,17 @@ document.addEventListener("DOMContentLoaded", () => {
                     ? apiBase
                     : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
 
-            const loadApiData = () => {
+            const enqueueApiLoad = (task) => {
+                apiQueue = apiQueue
+                    .then(task)
+                    .catch(() => {})
+                    .then(() => new Promise((resolve) => setTimeout(resolve, 200)));
+                return apiQueue;
+            };
+
+            const loadApiData = () => enqueueApiLoad(() => {
                 setLoading(true);
-                fetchJsonWithRetry(apiUrl, 3, 1000)
+                return fetchJsonWithRetry(apiUrl, 3, 1000)
                     .then((data) => {
                         console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
 
@@ -1085,7 +1094,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     .finally(() => {
                         setLoading(false);
                     });
-            };
+            });
 
             chart._reload = loadApiData;
             loadApiData();
