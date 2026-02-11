@@ -21,6 +21,11 @@ SECONDS_BETWEEN_REFRESH_STATS = 20  # 20 seconds
 SECONDS_BETWEEN_REFRESH_MV = 20  # 20 seconds
 SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM = 86400  # 24 hours
 
+# Refresh MV Flow Daily Avg schedule (nightly at 2:00 AM Rome time)
+MV_FLOW_DAILY_AVG_REFRESH_HOUR = 2 # 2 AM
+MV_FLOW_DAILY_AVG_REFRESH_MINUTE = 0
+MV_FLOW_DAILY_AVG_REFRESH_TZ = "Europe/Rome"
+
 # Tables
 RAW_TABLE_NAME = "hydro.tab_measurements_raw"
 

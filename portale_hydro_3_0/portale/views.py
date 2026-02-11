@@ -36,6 +36,126 @@ def measurements_api(request):
             status=400,
         )
     range_key = request.GET.get("range", "24h")
+    use_mv = range_key in {"6m", "1y", "all"}
+
+    max_points_by_range = {
+        "24h": None,
+        "7d": 10000,
+        "1m": 10000,
+        "6m": 10000,
+        "1y": 10000,
+        "all": 20000,
+    }
+    max_points = max_points_by_range.get(range_key, 25000)
+
+    print(
+        "[measurements_api] "
+        f"id={id_misuratore} range={range_key} "
+        f"source={'mv_flow_daily_avg' if use_mv else 'tab_measurements_clean'}"
+    )
+
+    if use_mv:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT MAX(day)
+                FROM hydro.mv_flow_daily_avg
+                WHERE id_misuratore = %s
+                """,
+                [id_misuratore],
+            )
+            latest_day = cursor.fetchone()[0]
+
+            if not latest_day:
+                return JsonResponse(
+                    {
+                        "timestamps": [],
+                        "flow_ls_raw": [],
+                        "flow_ls_smoothed": [],
+                        "is_outlier": [],
+                    }
+                )
+
+            cutoff = None
+            if range_key == "6m":
+                cutoff = latest_day - timedelta(days=182)
+            elif range_key == "1y":
+                cutoff = latest_day - timedelta(days=365)
+
+            if cutoff:
+                cursor.execute(
+                    """
+                    SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
+                    FROM hydro.mv_flow_daily_avg
+                    WHERE id_misuratore = %s
+                      AND day >= %s
+                      AND day <= %s
+                    ORDER BY day
+                    """,
+                    [id_misuratore, cutoff, latest_day],
+                )
+            else:
+                cursor.execute(
+                    """
+                    SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
+                    FROM hydro.mv_flow_daily_avg
+                    WHERE id_misuratore = %s
+                    ORDER BY day
+                    """,
+                    [id_misuratore],
+                )
+            rows = cursor.fetchall()
+
+        if not rows:
+            return JsonResponse(
+                {
+                    "timestamps": [],
+                    "flow_ls_raw": [],
+                    "flow_ls_smoothed": [],
+                    "is_outlier": [],
+                }
+            )
+
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} mv_rows={len(rows)}"
+        )
+
+        step = 1
+        if max_points:
+            total = len(rows)
+            step = max(1, total // max_points) if total else 1
+
+        timestamps = []
+        flow_raw = []
+        flow_smoothed = []
+        outliers = []
+        for i, (day, flow_ls_raw_avg, flow_ls_smoothed_avg) in enumerate(rows):
+            if step > 1 and i % step != 0:
+                continue
+            timestamps.append(day.isoformat())
+            flow_raw.append(
+                float(flow_ls_raw_avg) if flow_ls_raw_avg is not None else None
+            )
+            flow_smoothed.append(
+                float(flow_ls_smoothed_avg)
+                if flow_ls_smoothed_avg is not None
+                else None
+            )
+            outliers.append(None)
+
+        data = {
+            "timestamps": timestamps,
+            "flow_ls_raw": flow_raw,
+            "flow_ls_smoothed": flow_smoothed,
+            "is_outlier": outliers,
+        }
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} "
+            f"returned_points={len(timestamps)} step={step}"
+        )
+        return JsonResponse(data)
     base_qs = tab_measurements_clean.objects.filter(
         id_misuratore=id_misuratore
     ).values_list(
@@ -54,10 +174,6 @@ def measurements_api(request):
             cutoff = latest - timedelta(days=7)
         elif range_key == "1m":
             cutoff = latest - timedelta(days=30)
-        elif range_key == "6m":
-            cutoff = latest - timedelta(days=182)
-        elif range_key == "1y":
-            cutoff = latest - timedelta(days=365)
 
         if cutoff:
             rows = base_qs.filter(
@@ -66,15 +182,7 @@ def measurements_api(request):
         else:
             rows = base_qs.order_by("data_misurazione")
 
-    max_points_by_range = {
-        "24h": None,
-        "7d": 10000,
-        "1m": 10000,
-        "6m": 10000,
-        "1y": 10000,
-        "all": 20000,
-    }
-    max_points = max_points_by_range.get(range_key, 25000)
+
     step = 1
     if max_points:
         total = rows.count()
@@ -88,6 +196,15 @@ def measurements_api(request):
                 }
             )
         step = max(1, total // max_points)
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} raw_rows={total}"
+        )
+    else:
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} raw_rows={rows.count()}"
+        )
 
     timestamps = []
     flow_raw = []
@@ -109,6 +226,11 @@ def measurements_api(request):
         "flow_ls_smoothed": flow_smoothed,
         "is_outlier": outliers,
     }
+    print(
+        "[measurements_api] "
+        f"id={id_misuratore} range={range_key} "
+        f"returned_points={len(timestamps)} step={step}"
+    )
     return JsonResponse(data)
 
 
