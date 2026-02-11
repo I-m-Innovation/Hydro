@@ -82,67 +82,71 @@ def measurements_api(request):
             elif range_key == "1y":
                 cutoff = latest_day - timedelta(days=365)
 
+            where_sql = "WHERE id_misuratore = %s"
+            params = [id_misuratore]
             if cutoff:
-                cursor.execute(
-                    """
-                    SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
-                    FROM hydro.mv_flow_daily_avg
-                    WHERE id_misuratore = %s
-                      AND day >= %s
-                      AND day <= %s
-                    ORDER BY day
-                    """,
-                    [id_misuratore, cutoff, latest_day],
+                where_sql += " AND day >= %s AND day <= %s"
+                params.extend([cutoff, latest_day])
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM hydro.mv_flow_daily_avg
+                {where_sql}
+                """,
+                params,
+            )
+            total = cursor.fetchone()[0] or 0
+            if total == 0:
+                return JsonResponse(
+                    {
+                        "timestamps": [],
+                        "flow_ls_raw": [],
+                        "flow_ls_smoothed": [],
+                        "is_outlier": [],
+                    }
                 )
-            else:
-                cursor.execute(
-                    """
-                    SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
-                    FROM hydro.mv_flow_daily_avg
-                    WHERE id_misuratore = %s
-                    ORDER BY day
-                    """,
-                    [id_misuratore],
-                )
-            rows = cursor.fetchall()
 
-        if not rows:
-            return JsonResponse(
-                {
-                    "timestamps": [],
-                    "flow_ls_raw": [],
-                    "flow_ls_smoothed": [],
-                    "is_outlier": [],
-                }
+            step = 1
+            if max_points:
+                step = max(1, total // max_points)
+
+            cursor.execute(
+                f"""
+                SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
+                FROM hydro.mv_flow_daily_avg
+                {where_sql}
+                ORDER BY day
+                """,
+                params,
             )
 
-        print(
-            "[measurements_api] "
-            f"id={id_misuratore} range={range_key} mv_rows={len(rows)}"
-        )
-
-        step = 1
-        if max_points:
-            total = len(rows)
-            step = max(1, total // max_points) if total else 1
-
-        timestamps = []
-        flow_raw = []
-        flow_smoothed = []
-        outliers = []
-        for i, (day, flow_ls_raw_avg, flow_ls_smoothed_avg) in enumerate(rows):
-            if step > 1 and i % step != 0:
-                continue
-            timestamps.append(day.isoformat())
-            flow_raw.append(
-                float(flow_ls_raw_avg) if flow_ls_raw_avg is not None else None
-            )
-            flow_smoothed.append(
-                float(flow_ls_smoothed_avg)
-                if flow_ls_smoothed_avg is not None
-                else None
-            )
-            outliers.append(None)
+            timestamps = []
+            flow_raw = []
+            flow_smoothed = []
+            outliers = []
+            i = 0
+            while True:
+                chunk = cursor.fetchmany(5000)
+                if not chunk:
+                    break
+                for day, flow_ls_raw_avg, flow_ls_smoothed_avg in chunk:
+                    if step > 1 and i % step != 0:
+                        i += 1
+                        continue
+                    timestamps.append(day.isoformat())
+                    flow_raw.append(
+                        float(flow_ls_raw_avg)
+                        if flow_ls_raw_avg is not None
+                        else None
+                    )
+                    flow_smoothed.append(
+                        float(flow_ls_smoothed_avg)
+                        if flow_ls_smoothed_avg is not None
+                        else None
+                    )
+                    outliers.append(None)
+                    i += 1
 
         data = {
             "timestamps": timestamps,
@@ -153,7 +157,7 @@ def measurements_api(request):
         print(
             "[measurements_api] "
             f"id={id_misuratore} range={range_key} "
-            f"returned_points={len(timestamps)} step={step}"
+            f"mv_rows={total} returned_points={len(timestamps)} step={step}"
         )
         return JsonResponse(data)
     base_qs = tab_measurements_clean.objects.filter(
@@ -247,6 +251,21 @@ def duration_curve_api(request):
     with connection.cursor() as cursor:
         cursor.execute(
             """
+            SELECT COUNT(*)
+            FROM hydro.mv_flow_duration_curve_daily
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        total = cursor.fetchone()[0] or 0
+        if total == 0:
+            return JsonResponse({"exceedance_percent": [], "flow_ls_smoothed": []})
+
+        max_points = 20000
+        step = max(1, total // max_points) if total > max_points else 1
+
+        cursor.execute(
+            """
             SELECT flow_avg_day, p_exceed
             FROM hydro.mv_flow_duration_curve_daily
             WHERE id_misuratore = %s
@@ -254,20 +273,21 @@ def duration_curve_api(request):
             """,
             [id_misuratore],
         )
-        rows = cursor.fetchall()
+        flows = []
+        exceedance = []
+        i = 0
+        while True:
+            chunk = cursor.fetchmany(5000)
+            if not chunk:
+                break
+            for flow, p in chunk:
+                if step > 1 and i % step != 0:
+                    i += 1
+                    continue
+                flows.append(float(flow))
+                exceedance.append(float(p))
+                i += 1
     t1 = time.perf_counter()
-
-    total = len(rows)
-    if total == 0:
-        return JsonResponse({"exceedance_percent": [], "flow_ls_smoothed": []})
-
-    max_points = 20000
-    if total > max_points:
-        step = max(1, total // max_points)
-        rows = rows[::step]
-
-    flows = [float(flow) for flow, _p in rows]
-    exceedance = [float(p) for _flow, p in rows]
 
     data = {
         "exceedance_percent": exceedance,
