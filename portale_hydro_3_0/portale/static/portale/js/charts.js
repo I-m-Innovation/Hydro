@@ -1220,6 +1220,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (targetChart && typeof targetChart._reload === "function") {
                 console.log(`[charts] manual refresh ${targetId}`);
                 targetChart._reload();
+                if (typeof window.refreshLedStatus === "function") {
+                    window.refreshLedStatus();
+                } else {
+                    document.dispatchEvent(new Event("led-status:refresh"));
+                }
             } else {
                 console.log(`[charts] manual refresh skipped ${targetId}`);
             }

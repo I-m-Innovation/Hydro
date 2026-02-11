@@ -52,7 +52,13 @@ document.addEventListener("DOMContentLoaded", function() {
         throw lastError || new Error("Unknown fetch error");
     };
 
+    let ledFetchInFlight = false;
+
     const updateLeds = () => {
+        if (ledFetchInFlight) {
+            return;
+        }
+        ledFetchInFlight = true;
         fetchJsonWithRetry(API_ENDPOINT, 3, 2000)
             .then((payload) => {
                 const lastById = new Map();
@@ -82,11 +88,27 @@ document.addEventListener("DOMContentLoaded", function() {
             .catch(error => {
                 console.error("Error fetching LED status data after retries:", error);
                 leds.forEach(led => setLedStatus(led, "status-gray"));
+            })
+            .finally(() => {
+                ledFetchInFlight = false;
             });
     };
 
+    window.refreshLedStatus = updateLeds;
+    document.addEventListener("led-status:refresh", updateLeds);
+
     updateLeds();
     setInterval(updateLeds, REFRESH_INTERVAL);
+
+    const GREY_RECHECK_INTERVAL = 3000; // 3 seconds
+    setInterval(() => {
+        const hasGrey = Array.from(leds).some((led) =>
+            led.classList.contains("status-gray"),
+        );
+        if (hasGrey) {
+            updateLeds();
+        }
+    }, GREY_RECHECK_INTERVAL);
 
 
 /*	
