@@ -429,6 +429,559 @@ document.addEventListener("DOMContentLoaded", () => {
         },
     };
 
+    const buildDatasetConfigs = (cfg) =>
+        cfg.datasets || [
+            {
+                label: cfg.label,
+                color: cfg.color,
+                fillColor: cfg.fillColor,
+                fill: cfg.fill,
+                source: "values",
+            },
+        ];
+
+    const buildChartDatasets = (cfg, datasetConfigs, averageDataset) => [
+        ...datasetConfigs.map((ds) => ({
+            label: ds.label,
+            data: cfg.data || [],
+            borderColor: ds.color,
+            backgroundColor: ds.fillColor || ds.color,
+            borderWidth: ds.borderWidth ?? 1,
+            pointRadius: ds.pointRadius ?? 0,
+            pointHoverRadius: ds.pointHoverRadius ?? 4,
+            tension: 0.25,
+            fill: ds.fill,
+            order: ds.order,
+            spanGaps: ds.spanGaps,
+            showLine: ds.showLine,
+        })),
+        ...(averageDataset ? [averageDataset] : []),
+    ];
+
+    const buildChartOptions = (cfg, decimationEnabled) => ({
+        animation: false,
+        normalized: decimationEnabled,
+        parsing: decimationEnabled ? false : undefined,
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+            mode: cfg.type === "bar" ? "nearest" : "index",
+            intersect: false,
+        },
+        plugins: {
+            decimation: decimationEnabled
+                ? {
+                    enabled: true,
+                    algorithm: "lttb",
+                    samples: 1000,
+                }
+                : {
+                    enabled: false,
+                },
+            legend: {
+                display: true,
+            },
+            hoverLine: {},
+            staticVLine:
+                cfg.staticVLineX !== undefined
+                    ? {
+                        xValue: cfg.staticVLineX,
+                        label: "",
+                        color: "rgba(29, 78, 216, 0.85)",
+                        yColor: "rgba(29, 78, 216, 0.7)",
+                        lineWidth: 2,
+                        yLineWidth: 2,
+                        yZeroValue: 0,
+                        yZeroColor: "rgba(17, 24, 39, 0.25)",
+                        yZeroLineWidth: 2,
+                        dash: [6, 6],
+                    }
+                    : isFlowChart(cfg)
+                        ? {
+                            yZeroValue: 0,
+                            yZeroColor: "rgba(31, 41, 55, 0.8)",
+                            yZeroLineWidth: 2,
+                            yZeroDash: [8, 4],
+                        }
+                        : {},
+            tooltip: {
+                mode: cfg.type === "bar" ? "nearest" : "index",
+                intersect: false,
+                callbacks: {
+                    title:
+                        cfg.tooltipTitle ||
+                        ((items) => {
+                            if (!items.length) {
+                                return "";
+                            }
+                            if (isFlowChart(cfg)) {
+                                const x = items[0]?.parsed?.x;
+                                return formatTimestampFull(x);
+                            }
+                            return formatLabelTimestamp(items[0].label);
+                        }),
+                    label: (context) => {
+                        if (cfg.apiMode === "flow_histogram") {
+                            const index = context.dataIndex;
+                            const count = context.chart?._histCounts?.[index] ?? 0;
+                            const percent = context.chart?._histPercents?.[index] ?? 0;
+                            return `${percent.toFixed(2)}% (${count} punti)`;
+                        }
+                        const value = context.parsed?.y ?? context.parsed;
+                        if (value === null || value === undefined) {
+                            return "";
+                        }
+                        return `${value}`;
+                    },
+                },
+                backgroundColor: "rgba(17, 24, 39, 0.4)",
+            },
+            zoom: {
+                pan: {
+                    enabled: true,
+                    mode: "x",
+                    modifierKey: null,
+                    threshold: 2,
+                },
+                zoom: {
+                    wheel: {
+                        enabled: true,
+                    },
+                    pinch: {
+                        enabled: true,
+                    },
+                    drag: {
+                        enabled: true,
+                        borderColor: "rgba(29, 78, 216, 0.4)",
+                        borderWidth: 1,
+                        backgroundColor: "rgba(29, 78, 216, 0.08)",
+                    },
+                    mode: "x",
+                },
+            },
+        },
+        scales: {
+            x: {
+                type: cfg.xScaleType,
+                min: cfg.xMin ?? undefined,
+                max: cfg.xMax ?? undefined,
+                ticks: {
+                    callback: cfg.xTicksCallback,
+                    display: cfg.xTicksDisplay ?? false,
+                    autoSkip: cfg.xTicksAutoSkip ?? true,
+                    includeBounds: cfg.xTicksIncludeBounds ?? undefined,
+                    maxRotation: cfg.xTicksMaxRotation ?? undefined,
+                    minRotation: cfg.xTicksMinRotation ?? undefined,
+                    mirror: cfg.xTicksMirror ?? undefined,
+                    padding: cfg.xTicksPadding ?? undefined,
+                    maxTicksLimit: cfg.xTicksMaxTicksLimit ?? undefined,
+                },
+                title: {
+                    display: Boolean(cfg.showRange || cfg.xTitle),
+                    text: cfg.xTitle || "",
+                },
+                grid: {
+                    color: "#fff",
+                },
+                border: {
+                    display: true,
+                    color: "rgba(17, 24, 39, 0.45)",
+                    width: 2,
+                },
+            },
+            y: {
+                beginAtZero: true,
+                ticks: {
+                    maxTicksLimit: 5,
+                    precision: cfg.yTickPrecision ?? 0,
+                    autoSkip: cfg.yTicksAutoSkip ?? true,
+                    includeBounds: cfg.yTicksIncludeBounds ?? undefined,
+                },
+                title: {
+                    display: Boolean(cfg.yTitle),
+                    text: cfg.yTitle || "",
+                },
+                grid: {
+                    color: "#fff",
+                },
+                border: {
+                    display: true,
+                    color: "rgba(17, 24, 39, 0.2)",
+                    width: 1,
+                },
+            },
+        },
+    });
+
+    const applyRangeLabelToChart = (chart, cfg, rangeKey, timestamps) => {
+        if (isFlowChart(cfg) || !cfg.showRange || !timestamps.length) {
+            return;
+        }
+        const first = timestamps[0];
+        const last = timestamps[timestamps.length - 1];
+        if (chart.options.scales?.x?.title) {
+            chart.options.scales.x.title.text = `${formatTimestamp(
+                first,
+            )} -> ${formatTimestamp(last)} (${rangeKey})`;
+        }
+    };
+
+    const resolveApiUrl = (cfg, rangeKey, misuratoreId) => {
+        const apiBase = isDurationCurve(cfg)
+            ? "/portale/api/duration-curve/"
+            : isHistogram(cfg)
+                ? "/portale/api/flow-histogram/"
+                : "/portale/api/measurements/";
+
+        if (misuratoreId) {
+            return isHistogram(cfg)
+                ? `${apiBase}?id_misuratore=${encodeURIComponent(misuratoreId)}`
+                : `${apiBase}?id_misuratore=${encodeURIComponent(
+                    misuratoreId,
+                )}&range=${encodeURIComponent(rangeKey)}`;
+        }
+        return isHistogram(cfg)
+            ? apiBase
+            : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
+    };
+
+    const enqueueApiLoad = (task, isInitial, setApiLoadStatus) => {
+        if (isInitial) {
+            pendingInitialLoads += 1;
+            setApiLoadStatus(true);
+        }
+        apiQueue = apiQueue
+            .then(task)
+            .catch(() => {})
+            .then(() => new Promise((resolve) => setTimeout(resolve, 200)));
+        return apiQueue;
+    };
+
+    const applyFlowXAxis = (chart, cfg, rangeKey, xValues) => {
+        if (!isFlowChart(cfg) || !chart.options.scales?.x) {
+            return;
+        }
+        const finiteXs = xValues.filter((v) => Number.isFinite(v));
+        if (finiteXs.length) {
+            chart.options.scales.x.min = Math.min(...finiteXs);
+            chart.options.scales.x.max = Math.max(...finiteXs);
+        }
+        chart._gapRanges = computeGapRanges(xValues, rangeKey);
+    };
+
+    const applyHistogramData = (chart, data, parsedValues, index) => {
+        const mids = (data?.range_start || []).map((start, i) => {
+            const end = data?.range_end?.[i];
+            if (end === null || end === undefined) {
+                return Number(start);
+            }
+            return (Number(start) + Number(end)) / 2;
+        });
+        chart._histCounts = (data?.count || []).map((value) =>
+            Number.isFinite(Number(value)) ? Number(value) : 0,
+        );
+        chart._histPercents = (data?.percent || []).map((value) =>
+            Number.isFinite(Number(value)) ? Number(value) : 0,
+        );
+        chart._histRanges = (data?.range_start || []).map((start, i) => ({
+            start: Number(start),
+            end: Number(data?.range_end?.[i]),
+        }));
+        chart.data.datasets[index].data = parsedValues.map((value, i) =>
+            value === null ? null : { x: mids[i], y: value },
+        );
+    };
+
+    const applyDurationCurveData = (
+        chart,
+        parsedValues,
+        timestamps,
+        index,
+    ) => {
+        const filteredPoints = [];
+        parsedValues.forEach((value, i) => {
+            if (value === null || value < -50) {
+                return;
+            }
+            filteredPoints.push({ x: timestamps[i], y: value });
+        });
+        chart.data.datasets[index].data = filteredPoints;
+        return filteredPoints;
+    };
+
+    const applyGenericSeriesData = (
+        chart,
+        parsedValues,
+        xValues,
+        index,
+        useXYPoints,
+    ) => {
+        chart.data.datasets[index].data = useXYPoints
+            ? parsedValues
+                .map((value, i) => {
+                    const x = xValues[i];
+                    return value === null ||
+                        x === null ||
+                        !Number.isFinite(value) ||
+                        !Number.isFinite(x)
+                        ? null
+                        : { x, y: value };
+                })
+                .filter((point) => point !== null)
+            : parsedValues.filter(
+                (value) => value !== null && Number.isFinite(value),
+            );
+    };
+
+    const updateFlowDataset = (
+        chart,
+        parsedValues,
+        xValues,
+        rangeKey,
+        index,
+        decimationEnabled,
+    ) => {
+        if (decimationEnabled) {
+            // Con decimazione, usa la funzione originale
+            chart.data.datasets[index].data = buildFlowPointsWithGaps(
+                xValues,
+                parsedValues,
+                rangeKey,
+            );
+        } else {
+            // Senza decimazione, usa la funzione specifica per range brevi
+            chart.data.datasets[index].data = buildFlowPointsWithGapsShort(
+                xValues,
+                parsedValues,
+                rangeKey,
+            );
+        }
+    };
+
+    const updateYAxisBounds = (
+        chart,
+        cfg,
+        datasetConfigs,
+        durationFilteredPoints,
+        avgValue,
+        data,
+    ) => {
+        let maxValue = 0;
+        let minValue = Number.POSITIVE_INFINITY;
+        if (isDurationCurve(cfg)) {
+            (durationFilteredPoints || []).forEach((point) => {
+                const value = point?.y;
+                if (!Number.isFinite(value)) {
+                    return;
+                }
+                if (value > maxValue) {
+                    maxValue = value;
+                }
+                if (value < minValue) {
+                    minValue = value;
+                }
+            });
+        } else {
+            datasetConfigs.forEach((ds) => {
+                const sourceValues = data[ds.source] || [];
+                sourceValues.forEach((value) => {
+                    const parsed = Number(value);
+                    if (!Number.isFinite(parsed)) {
+                        return;
+                    }
+                    if (parsed > maxValue) {
+                        maxValue = parsed;
+                    }
+                    if (parsed < minValue) {
+                        minValue = parsed;
+                    }
+                });
+            });
+        }
+
+        const avgNumeric = parseAverageValue(avgValue);
+        const boundedMax = Number.isFinite(avgNumeric)
+            ? Math.max(maxValue, avgNumeric)
+            : maxValue;
+
+        if (chart.options.scales?.y) {
+            if (isFlowChart(cfg)) {
+                // Limite minimo dinamico per il grafico della portata
+                const hasNegativeValues = Number.isFinite(minValue) && minValue < 0;
+                chart.options.scales.y.min = hasNegativeValues ? -50 : 0;
+                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
+            } else {
+                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
+                if (isDurationCurve(cfg)) {
+                    const boundedMin = Number.isFinite(minValue)
+                        ? Math.min(minValue, 0)
+                        : 0;
+                    chart.options.scales.y.suggestedMin = boundedMin;
+                }
+            }
+        }
+    };
+
+    const applyApiDataToChart = ({
+        cfg,
+        rangeKey,
+        chart,
+        data,
+        datasetConfigs,
+        decimationThreshold,
+        getDecimationEnabled,
+        setDecimationEnabled,
+        setNoDataVisible,
+        avgValue,
+        applyRangeLabel,
+    }) => {
+        console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
+
+        const timestamps = isDurationCurve(cfg)
+            ? data?.exceedance_percent || []
+            : isHistogram(cfg)
+                ? data?.range_start || []
+                : data?.timestamps || [];
+        if (!Array.isArray(timestamps)) {
+            return;
+        }
+
+        // Check if arrays are empty (no data retrieved from API)
+        if (isFlowChart(cfg)) {
+            const flowRaw = data?.flow_ls_raw || [];
+            const flowSmoothed = data?.flow_ls_smoothed || [];
+            const isEmpty =
+                timestamps.length === 0 &&
+                flowRaw.length === 0 &&
+                flowSmoothed.length === 0;
+            setNoDataVisible(isEmpty);
+        } else if (timestamps.length === 0) {
+            setNoDataVisible(true);
+            return;
+        } else {
+            setNoDataVisible(false);
+        }
+
+        const xValues = isFlowChart(cfg) ? timestamps.map(toMillis) : timestamps;
+
+        chart.data.labels = xValues;
+        applyFlowXAxis(chart, cfg, rangeKey, xValues);
+
+        let durationValues = null;
+        let durationFilteredPoints = null;
+
+        datasetConfigs.forEach((ds, index) => {
+            const sourceValues = data[ds.source] || [];
+            const parsedValues = parseNumberArray(sourceValues);
+
+            if (isFlowChart(cfg)) {
+                console.log(
+                    `[charts] ${cfg.id} dataset \"${ds.label}\" points received: ${parsedValues.length}`,
+                );
+            }
+
+            if (isDurationCurve(cfg) && durationValues === null) {
+                durationValues = parsedValues;
+            }
+
+            if (isFlowChart(cfg) && decimationThreshold) {
+                const shouldDecimate = parsedValues.length > decimationThreshold;
+                if (shouldDecimate !== getDecimationEnabled()) {
+                    setDecimationEnabled(shouldDecimate);
+                }
+            }
+
+            if (isHistogram(cfg)) {
+                applyHistogramData(chart, data, parsedValues, index);
+                return;
+            }
+
+            const useXYPoints = getDecimationEnabled() || isDurationCurve(cfg);
+
+            if (isDurationCurve(cfg) && useXYPoints) {
+                const filteredPoints = applyDurationCurveData(
+                    chart,
+                    parsedValues,
+                    timestamps,
+                    index,
+                );
+                if (durationFilteredPoints === null) {
+                    durationFilteredPoints = filteredPoints;
+                }
+                return;
+            }
+
+            if (isFlowChart(cfg)) {
+                const decimationEnabled = getDecimationEnabled();
+                console.log(
+                    `[charts] ${cfg.id} decimationEnabled: ${decimationEnabled}, points: ${parsedValues.length}`,
+                );
+                updateFlowDataset(
+                    chart,
+                    parsedValues,
+                    xValues,
+                    rangeKey,
+                    index,
+                    decimationEnabled,
+                );
+                return;
+            }
+
+            applyGenericSeriesData(
+                chart,
+                parsedValues,
+                xValues,
+                index,
+                useXYPoints,
+            );
+        });
+
+        if (!isHistogram(cfg) && !isFlowChart(cfg)) {
+            applyRangeLabel(timestamps);
+        }
+
+        if (isDurationCurve(cfg)) {
+            const y80 = computeYAtX(
+                timestamps,
+                durationValues || [],
+                cfg.staticVLineX,
+            );
+            if (chart.options.plugins?.staticVLine) {
+                chart.options.plugins.staticVLine.yValue = Number.isFinite(y80)
+                    ? y80
+                    : null;
+            }
+        }
+
+        updateYAxisBounds(
+            chart,
+            cfg,
+            datasetConfigs,
+            durationFilteredPoints,
+            avgValue,
+            data,
+        );
+
+        if (cfg.showAverage) {
+            updateAverageLine(chart, avgValue);
+        }
+
+        chart.update("none");
+
+        if (isFlowChart(cfg)) {
+            const firstDataset = chart.data.datasets[0];
+            const rawCount = firstDataset?.data?.length ?? 0;
+            setTimeout(() => {
+                const decimatedCount = Array.isArray(firstDataset?._decimated)
+                    ? firstDataset._decimated.length
+                    : rawCount;
+                console.log(
+                    `[charts] ${cfg.id} points after decimation: ${decimatedCount}`,
+                );
+            }, 0);
+        }
+    };
+
     // Chart configs.
     const charts = [
         {
@@ -607,15 +1160,7 @@ document.addEventListener("DOMContentLoaded", () => {
             noDataMessage.classList.toggle("is-hidden", !isVisible);
         };
 
-        const datasetConfigs = cfg.datasets || [
-            {
-                label: cfg.label,
-                color: cfg.color,
-                fillColor: cfg.fillColor,
-                fill: cfg.fill,
-                source: "values",
-            },
-        ];
+        const datasetConfigs = buildDatasetConfigs(cfg);
 
         const avgValue = getAverageForRange(canvas, rangeKey);
         const averageDataset = cfg.showAverage ? buildAverageDataset() : null;
@@ -644,182 +1189,15 @@ document.addEventListener("DOMContentLoaded", () => {
             }
         };
 
+        const getDecimationEnabled = () => decimationEnabled;
+
         const chart = new Chart(canvas, {
             type: cfg.type,
             data: {
                 labels: cfg.labels || DEFAULT_LABELS,
-                datasets: [
-                    ...datasetConfigs.map((ds) => ({
-                        label: ds.label,
-                        data: cfg.data || [],
-                        borderColor: ds.color,
-                        backgroundColor: ds.fillColor || ds.color,
-                        borderWidth: ds.borderWidth ?? 1,
-                        pointRadius: ds.pointRadius ?? 0,
-                        pointHoverRadius: ds.pointHoverRadius ?? 4,
-                        tension: 0.25,
-                        fill: ds.fill,
-                        order: ds.order,
-                        spanGaps: ds.spanGaps,
-                        showLine: ds.showLine,
-                    })),
-                    ...(averageDataset ? [averageDataset] : []),
-                ],
+                datasets: buildChartDatasets(cfg, datasetConfigs, averageDataset),
             },
-            options: {
-                animation: false,
-                normalized: decimationEnabled,
-                parsing: decimationEnabled ? false : undefined,
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: cfg.type === "bar" ? "nearest" : "index",
-                    intersect: false,
-                },
-                plugins: {
-                    decimation: decimationEnabled
-                        ? {
-                            enabled: true,
-                            algorithm: "lttb",
-                            samples: 1000,
-                        }
-                        : {
-                            enabled: false,
-                        },
-                    legend: {
-                        display: true,
-                    },
-                    hoverLine: {},
-                    staticVLine:
-                        cfg.staticVLineX !== undefined
-                            ? {
-                                xValue: cfg.staticVLineX,
-                                label: "",
-                                color: "rgba(29, 78, 216, 0.85)",
-                                yColor: "rgba(29, 78, 216, 0.7)",
-                                lineWidth: 2,
-                                yLineWidth: 2,
-                                yZeroValue: 0,
-                                yZeroColor: "rgba(17, 24, 39, 0.25)",
-                                yZeroLineWidth: 2,
-                                dash: [6, 6],
-                            }
-                            : isFlowChart(cfg)
-                                ? {
-                                    yZeroValue: 0,
-                                    yZeroColor: "rgba(31, 41, 55, 0.8)",
-                                    yZeroLineWidth: 2,
-                                    yZeroDash: [8, 4],
-                                }
-                                : {},
-                    tooltip: {
-                        mode: cfg.type === "bar" ? "nearest" : "index",
-                        intersect: false,
-                        callbacks: {
-                            title:
-                                cfg.tooltipTitle ||
-                                ((items) => {
-                                    if (!items.length) {
-                                        return "";
-                                    }
-                                    if (isFlowChart(cfg)) {
-                                        const x = items[0]?.parsed?.x;
-                                        return formatTimestampFull(x);
-                                    }
-                                    return formatLabelTimestamp(items[0].label);
-                                }),
-                            label: (context) => {
-                                if (cfg.apiMode === "flow_histogram") {
-                                    const index = context.dataIndex;
-                                    const count = context.chart?._histCounts?.[index] ?? 0;
-                                    const percent = context.chart?._histPercents?.[index] ?? 0;
-                                    return `${percent.toFixed(2)}% (${count} punti)`;
-                                }
-                                const value = context.parsed?.y ?? context.parsed;
-                                if (value === null || value === undefined) {
-                                    return "";
-                                }
-                                return `${value}`;
-                            },
-                        },
-                        backgroundColor: "rgba(17, 24, 39, 0.4)",
-                    },
-                    zoom: {
-                        pan: {
-                            enabled: true,
-                            mode: "x",
-                            modifierKey: null,
-                            threshold: 2,
-                        },
-                        zoom: {
-                            wheel: {
-                                enabled: true,
-                            },
-                            pinch: {
-                                enabled: true,
-                            },
-                            drag: {
-                                enabled: true,
-                                borderColor: "rgba(29, 78, 216, 0.4)",
-                                borderWidth: 1,
-                                backgroundColor: "rgba(29, 78, 216, 0.08)",
-                            },
-                            mode: "x",
-                        },
-                    },
-                },
-                scales: {
-                    x: {
-                        type: cfg.xScaleType,
-                        min: cfg.xMin ?? undefined,
-                        max: cfg.xMax ?? undefined,
-                        ticks: {
-                            callback: cfg.xTicksCallback,
-                            display: cfg.xTicksDisplay ?? false,
-                            autoSkip: cfg.xTicksAutoSkip ?? true,
-                            includeBounds: cfg.xTicksIncludeBounds ?? undefined,
-                            maxRotation: cfg.xTicksMaxRotation ?? undefined,
-                            minRotation: cfg.xTicksMinRotation ?? undefined,
-                            mirror: cfg.xTicksMirror ?? undefined,
-                            padding: cfg.xTicksPadding ?? undefined,
-                            maxTicksLimit: cfg.xTicksMaxTicksLimit ?? undefined,
-                        },
-                        title: {
-                            display: Boolean(cfg.showRange || cfg.xTitle),
-                            text: cfg.xTitle || "",
-                        },
-                        grid: {
-                            color: "#fff",
-                        },
-                        border: {
-                            display: true,
-                            color: "rgba(17, 24, 39, 0.45)",
-                            width: 2,
-                        },
-                    },
-                    y: {
-                        beginAtZero: true,
-                        ticks: {
-                            maxTicksLimit: 5,
-                            precision: cfg.yTickPrecision ?? 0,
-                            autoSkip: cfg.yTicksAutoSkip ?? true,
-                            includeBounds: cfg.yTicksIncludeBounds ?? undefined,
-                        },
-                        title: {
-                            display: Boolean(cfg.yTitle),
-                            text: cfg.yTitle || "",
-                        },
-                        grid: {
-                            color: "#fff",
-                        },
-                        border: {
-                            display: true,
-                            color: "rgba(17, 24, 39, 0.2)",
-                            width: 1,
-                        },
-                    },
-                },
-            },
+            options: buildChartOptions(cfg, decimationEnabled),
             plugins: [hoverLinePlugin, gapShadingPlugin, staticVLinePlugin],
         });
 
@@ -829,298 +1207,57 @@ document.addEventListener("DOMContentLoaded", () => {
             setDecimationEnabled(decimationEnabled);
         }
 
-        const applyRangeLabel = (timestamps) => {
-            if (isFlowChart(cfg) || !cfg.showRange || !timestamps.length) {
-                return;
-            }
-            const first = timestamps[0];
-            const last = timestamps[timestamps.length - 1];
-            if (chart.options.scales?.x?.title) {
-                chart.options.scales.x.title.text = `${formatTimestamp(
-                    first,
-                )} -> ${formatTimestamp(last)} (${rangeKey})`;
-            }
-        };
+        const applyRangeLabel = (timestamps) =>
+            applyRangeLabelToChart(chart, cfg, rangeKey, timestamps);
 
         if (cfg.useApi) {
             const misuratoreId = canvas.getAttribute("data-misuratore");
-            const apiBase = isDurationCurve(cfg)
-                ? "/portale/api/duration-curve/"
-                : isHistogram(cfg)
-                    ? "/portale/api/flow-histogram/"
-                    : "/portale/api/measurements/";
+            const apiUrl = resolveApiUrl(cfg, rangeKey, misuratoreId);
 
-            const apiUrl = misuratoreId
-                ? isHistogram(cfg)
-                    ? `${apiBase}?id_misuratore=${encodeURIComponent(misuratoreId)}`
-                    : `${apiBase}?id_misuratore=${encodeURIComponent(
-                        misuratoreId,
-                    )}&range=${encodeURIComponent(rangeKey)}`
-                : isHistogram(cfg)
-                    ? apiBase
-                    : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
-
-            const enqueueApiLoad = (task, isInitial = false) => {
-                if (isInitial) {
-                    pendingInitialLoads += 1;
-                    setApiLoadStatus(true);
-                }
-                apiQueue = apiQueue
-                    .then(task)
-                    .catch(() => {})
-                    .then(() => new Promise((resolve) => setTimeout(resolve, 200)));
-                return apiQueue;
-            };
-
-            const loadApiData = (isInitial = false) => enqueueApiLoad(() => {
-                setLoading(true);
-                return fetchJsonWithRetry(apiUrl, 3, 1000)
-                    .then((data) => {
-                        console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
-
-                        const timestamps = isDurationCurve(cfg)
-                            ? data?.exceedance_percent || []
-                            : isHistogram(cfg)
-                                ? data?.range_start || []
-                                : data?.timestamps || [];
-                        if (!Array.isArray(timestamps)) {
-                            return;
-                        }
-                        
-                        // Check if arrays are empty (no data retrieved from API)
-                        if (isFlowChart(cfg)) {
-                            const flowRaw = data?.flow_ls_raw || [];
-                            const flowSmoothed = data?.flow_ls_smoothed || [];
-                            const isEmpty = timestamps.length === 0 && flowRaw.length === 0 && flowSmoothed.length === 0;
-                            setNoDataVisible(isEmpty);
-                        } else if (timestamps.length === 0) {
-                            setNoDataVisible(true);
-                            return;
-                        } else {
-                            setNoDataVisible(false);
-                        }
-
-                        const xValues = isFlowChart(cfg)
-                            ? timestamps.map(toMillis)
-                            : timestamps;
-
-                        chart.data.labels = xValues;
-
-                        if (isFlowChart(cfg) && chart.options.scales?.x) {
-                            const finiteXs = xValues.filter((v) => Number.isFinite(v));
-                            if (finiteXs.length) {
-                                chart.options.scales.x.min = Math.min(...finiteXs);
-                                chart.options.scales.x.max = Math.max(...finiteXs);
-                            }
-                            chart._gapRanges = computeGapRanges(xValues, rangeKey);
-                        }
-
-                        let durationValues = null;
-                        let durationFilteredPoints = null;
-
-                        datasetConfigs.forEach((ds, index) => {
-                            const sourceValues = data[ds.source] || [];
-                            const parsedValues = parseNumberArray(sourceValues);
-
-                            if (isFlowChart(cfg)) {
-                                console.log(
-                                    `[charts] ${cfg.id} dataset "${ds.label}" points received: ${parsedValues.length}`,
-                                );
-                            }
-
-                            if (isDurationCurve(cfg) && durationValues === null) {
-                                durationValues = parsedValues;
-                            }
-
-                            if (isFlowChart(cfg) && decimationThreshold) {
-                                const shouldDecimate =
-                                    parsedValues.length > decimationThreshold;
-                                if (shouldDecimate !== decimationEnabled) {
-                                    setDecimationEnabled(shouldDecimate);
-                                }
-                            }
-
-                            if (isHistogram(cfg)) {
-                                const mids = (data?.range_start || []).map((start, i) => {
-                                    const end = data?.range_end?.[i];
-                                    if (end === null || end === undefined) {
-                                        return Number(start);
-                                    }
-                                    return (Number(start) + Number(end)) / 2;
+            const loadApiData = (isInitial = false) =>
+                enqueueApiLoad(
+                    () => {
+                        setLoading(true);
+                        return fetchJsonWithRetry(apiUrl, 3, 1000)
+                            .then((data) => {
+                                applyApiDataToChart({
+                                    cfg,
+                                    rangeKey,
+                                    chart,
+                                    data,
+                                    datasetConfigs,
+                                    decimationThreshold,
+                                    getDecimationEnabled,
+                                    setDecimationEnabled,
+                                    setNoDataVisible,
+                                    avgValue,
+                                    applyRangeLabel,
                                 });
-                                chart._histCounts = (data?.count || []).map((value) =>
-                                    Number.isFinite(Number(value)) ? Number(value) : 0,
-                                );
-                                chart._histPercents = (data?.percent || []).map((value) =>
-                                    Number.isFinite(Number(value)) ? Number(value) : 0,
-                                );
-                                chart._histRanges = (data?.range_start || []).map(
-                                    (start, i) => ({
-                                        start: Number(start),
-                                        end: Number(data?.range_end?.[i]),
-                                    }),
-                                );
-                                chart.data.datasets[index].data = parsedValues.map(
-                                    (value, i) =>
-                                        value === null ? null : { x: mids[i], y: value },
-                                );
-                                return;
-                            }
-
-                            const useXYPoints =
-                                decimationEnabled || isDurationCurve(cfg);
-
-                            if (isDurationCurve(cfg) && useXYPoints) {
-                                const filteredPoints = [];
-                                parsedValues.forEach((value, i) => {
-                                    if (value === null || value < -50) {
-                                        return;
+                            })
+                            .catch((error) => {
+                                console.error(`[charts] ${cfg.id} API failed:`, error);
+                                // Keep existing chart if API fails.
+                            })
+                            .finally(() => {
+                                setLoading(false);
+                                if (isInitial) {
+                                    pendingInitialLoads = Math.max(
+                                        0,
+                                        pendingInitialLoads - 1,
+                                    );
+                                    if (
+                                        pendingInitialLoads === 0 &&
+                                        initialLoadActive
+                                    ) {
+                                        initialLoadActive = false;
+                                        setApiLoadStatus(false);
                                     }
-                                    filteredPoints.push({ x: timestamps[i], y: value });
-                                });
-                                chart.data.datasets[index].data = filteredPoints;
-                                if (durationFilteredPoints === null) {
-                                    durationFilteredPoints = filteredPoints;
-                                }
-                                return;
-                            }
-
-                            if (isFlowChart(cfg)) {
-                                console.log(`[charts] ${cfg.id} decimationEnabled: ${decimationEnabled}, points: ${parsedValues.length}`);
-                                if (decimationEnabled) {
-                                    // Con decimazione, usa la funzione originale
-                                    chart.data.datasets[index].data = buildFlowPointsWithGaps(
-                                        xValues,
-                                        parsedValues,
-                                        rangeKey,
-                                    );
-                                } else {
-                                    // Senza decimazione, usa la funzione specifica per range brevi
-                                    chart.data.datasets[index].data = buildFlowPointsWithGapsShort(
-                                        xValues,
-                                        parsedValues,
-                                        rangeKey,
-                                    );
-                                }
-                                return;
-                            }
-
-                            chart.data.datasets[index].data = useXYPoints
-                                ? parsedValues.map((value, i) => {
-                                    const x = xValues[i];
-                                    return value === null || x === null || !Number.isFinite(value) || !Number.isFinite(x)
-                                        ? null
-                                        : { x, y: value };
-                                }).filter(point => point !== null)
-                                : parsedValues.filter(value => value !== null && Number.isFinite(value));
-                        });
-
-                        if (!isHistogram(cfg) && !isFlowChart(cfg)) {
-                            applyRangeLabel(timestamps);
-                        }
-
-                        if (isDurationCurve(cfg)) {
-                            const y80 = computeYAtX(
-                                timestamps,
-                                durationValues || [],
-                                cfg.staticVLineX,
-                            );
-                            if (chart.options.plugins?.staticVLine) {
-                                chart.options.plugins.staticVLine.yValue = Number.isFinite(y80)
-                                    ? y80
-                                    : null;
-                            }
-                        }
-
-                        let maxValue = 0;
-                        let minValue = Number.POSITIVE_INFINITY;
-                        if (isDurationCurve(cfg)) {
-                            (durationFilteredPoints || []).forEach((point) => {
-                                const value = point?.y;
-                                if (!Number.isFinite(value)) {
-                                    return;
-                                }
-                                if (value > maxValue) {
-                                    maxValue = value;
-                                }
-                                if (value < minValue) {
-                                    minValue = value;
                                 }
                             });
-                        } else {
-                            datasetConfigs.forEach((ds) => {
-                                const sourceValues = data[ds.source] || [];
-                                sourceValues.forEach((value) => {
-                                    const parsed = Number(value);
-                                    if (!Number.isFinite(parsed)) {
-                                        return;
-                                    }
-                                    if (parsed > maxValue) {
-                                        maxValue = parsed;
-                                    }
-                                    if (parsed < minValue) {
-                                        minValue = parsed;
-                                    }
-                                });
-                            });
-                        }
-
-                        const avgNumeric = parseAverageValue(avgValue);
-                        const boundedMax = Number.isFinite(avgNumeric)
-                            ? Math.max(maxValue, avgNumeric)
-                            : maxValue;
-
-                        if (chart.options.scales?.y) {
-                            if (isFlowChart(cfg)) {
-                                // Limite minimo dinamico per il grafico della portata
-                                const hasNegativeValues = Number.isFinite(minValue) && minValue < 0;
-                                chart.options.scales.y.min = hasNegativeValues ? -50 : 0;
-                                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
-                            } else {
-                                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
-                                if (isDurationCurve(cfg)) {
-                                    const boundedMin = Number.isFinite(minValue)
-                                        ? Math.min(minValue, 0)
-                                        : 0;
-                                    chart.options.scales.y.suggestedMin = boundedMin;
-                                }
-                            }
-                        }
-
-                        if (cfg.showAverage) {
-                            updateAverageLine(chart, avgValue);
-                        }
-
-                        chart.update("none");
-
-                        if (isFlowChart(cfg)) {
-                            const firstDataset = chart.data.datasets[0];
-                            const rawCount = firstDataset?.data?.length ?? 0;
-                            setTimeout(() => {
-                                const decimatedCount = Array.isArray(firstDataset?._decimated)
-                                    ? firstDataset._decimated.length
-                                    : rawCount;
-                                console.log(
-                                    `[charts] ${cfg.id} points after decimation: ${decimatedCount}`,
-                                );
-                            }, 0);
-                        }
-                    })
-                    .catch((error) => {
-                        console.error(`[charts] ${cfg.id} API failed:`, error);
-                        // Keep existing chart if API fails.
-                    })
-                    .finally(() => {
-                        setLoading(false);
-                        if (isInitial) {
-                            pendingInitialLoads = Math.max(0, pendingInitialLoads - 1);
-                            if (pendingInitialLoads === 0 && initialLoadActive) {
-                                initialLoadActive = false;
-                                setApiLoadStatus(false);
-                            }
-                        }
-                    });
-            }, isInitial);
+                    },
+                    isInitial,
+                    setApiLoadStatus,
+                );
 
             chart._reload = loadApiData;
             loadApiData(initialLoadActive);
