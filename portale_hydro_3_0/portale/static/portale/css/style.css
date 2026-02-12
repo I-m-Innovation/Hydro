@@ -809,7 +809,7 @@ body.sidebar-collapsed #lista-impianti {
 }
 
 .is-hidden {
-  display: none;
+  display: none !important;
 }
 
 .chart-card-body {
@@ -829,6 +829,10 @@ body.sidebar-collapsed #lista-impianti {
   font-weight: 700;
   border-radius: 8px;
   z-index: 4;
+}
+
+.chart-no-data-overlay.is-hidden {
+  display: none;
 }
 
 .api-load-status {
