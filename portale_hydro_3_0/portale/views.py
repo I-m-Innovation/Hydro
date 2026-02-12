@@ -1,5 +1,6 @@
 from datetime import timedelta
 import time
+import re
 
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -8,6 +9,26 @@ from django.db.models import Max
 from django.contrib.auth.decorators import login_required
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
+
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
+MAX_ID_MISURATORE_LEN = 128
+ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
+
+
+def validate_id_misuratore(raw_value):
+    if raw_value is None:
+        return None, "id_misuratore is required"
+    if not isinstance(raw_value, str):
+        raw_value = str(raw_value)
+    if len(raw_value) == 0:
+        return None, "id_misuratore is required"
+    if len(raw_value) > MAX_ID_MISURATORE_LEN:
+        return None, f"id_misuratore is too long (max {MAX_ID_MISURATORE_LEN})"
+    if CONTROL_CHARS_RE.search(raw_value):
+        return None, "id_misuratore contains invalid control characters"
+    if not any(not ch.isspace() for ch in raw_value):
+        return None, "id_misuratore cannot be only whitespace"
+    return raw_value, None
 
 @login_required
 def home(request):
@@ -29,13 +50,18 @@ def facilities_map(request):
 
 @login_required
 def measurements_api(request):
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+    range_key = request.GET.get("range", "24h")
+    if range_key not in ALLOWED_RANGE_KEYS:
         return JsonResponse(
-            {"error": "id_misuratore is required"},
+            {
+                "error": "invalid range",
+                "allowed": sorted(ALLOWED_RANGE_KEYS),
+            },
             status=400,
         )
-    range_key = request.GET.get("range", "24h")
     use_mv = range_key in {"6m", "1y", "all"}
 
     max_points_by_range = {
@@ -241,12 +267,9 @@ def measurements_api(request):
 @login_required
 def duration_curve_api(request):
     t0 = time.perf_counter()
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
-        return JsonResponse(
-            {"error": "id_misuratore is required"},
-            status=400,
-        )
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -303,12 +326,9 @@ def duration_curve_api(request):
 
 @login_required
 def flow_histogram_api(request):
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
-        return JsonResponse(
-            {"error": "id_misuratore is required"},
-            status=400,
-        )
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -360,6 +380,9 @@ def flow_histogram_api(request):
 
 @login_required
 def misuratore_detail(request, id_misuratore):
+    id_misuratore, error = validate_id_misuratore(id_misuratore)
+    if error:
+        return JsonResponse({"error": error}, status=400)
     misuratore = (
         tab_misuratori.objects.filter(id_misuratore=id_misuratore)
         .only(

@@ -1,4 +1,22 @@
-Ultimo update - 11/02/2026
+Ultimo update - 12/02/2026
+
+## Ultimo update - 12/02/2026
+
+### Backend - Ottimizzazioni performance e LED status
+- `measurements_api` e `duration_curve_api`: fetch in chunk (no `fetchall`) per ridurre OOM.
+- Nuova MV `hydro.mv_led_status` con `id_misuratore`, `name`, `latest_measurement`.
+- Script SQL:
+  - `db_manager/scripts/ensure_mv_led_status.sql`
+  - `db_manager/scripts/refresh_mv_led_status.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_led_status.py`.
+- Scheduler refresh MV in `db_manager/run.py` + intervallo in `db_manager/config/settings.py` (`SECONDS_BETWEEN_REFRESH_LED_STATUS`).
+- Endpoint `led_status_api` ora legge da MV (`portale_hydro_3_0/portale/views.py`).
+
+### Frontend - LED e messaggi no-data
+- `led_status.js`: refresh manuale via `window.refreshLedStatus` e evento `led-status:refresh`.
+- `led_status.js`: backoff esponenziale sui retry quando LED resta grigio (riduce spam).
+- `charts.js`: il bottone "Aggiorna" dei grafici richiama anche il refresh LED.
+- `charts.js` + `style.css`: overlay centrato "No data retrieved" sopra il canvas quando API ritorna array vuoti.
 
 ## Ultimo update - 11/02/2026
 
