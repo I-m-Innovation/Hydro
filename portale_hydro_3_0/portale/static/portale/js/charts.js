@@ -886,11 +886,19 @@ document.addEventListener("DOMContentLoaded", () => {
                         if (!Array.isArray(timestamps)) {
                             return;
                         }
-                        if (timestamps.length === 0) {
+                        
+                        // Check if arrays are empty (no data retrieved from API)
+                        if (isFlowChart(cfg)) {
+                            const flowRaw = data?.flow_ls_raw || [];
+                            const flowSmoothed = data?.flow_ls_smoothed || [];
+                            const isEmpty = timestamps.length === 0 && flowRaw.length === 0 && flowSmoothed.length === 0;
+                            setNoDataVisible(isEmpty);
+                        } else if (timestamps.length === 0) {
                             setNoDataVisible(true);
                             return;
+                        } else {
+                            setNoDataVisible(false);
                         }
-                        setNoDataVisible(false);
 
                         const xValues = isFlowChart(cfg)
                             ? timestamps.map(toMillis)
