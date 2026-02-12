@@ -16,7 +16,7 @@ Including another URLconf
 """
 from django.contrib import admin
 from django.core.exceptions import PermissionDenied
-from django.http import Http404
+from django.http import Http404, HttpResponse
 from django.urls import path, include
 from django.views import defaults as default_views
 from django.views.generic import RedirectView
@@ -26,6 +26,7 @@ from django.views.generic import RedirectView
 
 urlpatterns = [
     path("", RedirectView.as_view(url="/portale/home/", permanent=False)),
+    path("favicon.ico", lambda request: HttpResponse(status=204)),
     path('admin/', admin.site.urls),
     path('accounts/', include('django.contrib.auth.urls')),
     path('portale/', include('portale.urls')),
