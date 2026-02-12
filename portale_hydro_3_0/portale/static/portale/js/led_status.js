@@ -54,6 +54,40 @@ document.addEventListener("DOMContentLoaded", function() {
 
     let ledFetchInFlight = false;
 
+    const GREY_RECHECK_BASE_MS = 3000; // 3 seconds
+    const GREY_RECHECK_MAX_MS = 60000; // 60 seconds
+    let greyRetryDelay = GREY_RECHECK_BASE_MS;
+    let greyRetryTimer = null;
+
+    const scheduleGreyRetry = () => {
+        if (greyRetryTimer) {
+            return;
+        }
+        greyRetryTimer = window.setTimeout(() => {
+            greyRetryTimer = null;
+            const hasGrey = Array.from(leds).some((led) =>
+                led.classList.contains("status-gray"),
+            );
+            if (hasGrey) {
+                updateLeds();
+            } else {
+                greyRetryDelay = GREY_RECHECK_BASE_MS;
+            }
+        }, greyRetryDelay);
+    };
+
+    const bumpGreyBackoff = () => {
+        greyRetryDelay = Math.min(GREY_RECHECK_MAX_MS, Math.ceil(greyRetryDelay * 2));
+    };
+
+    const resetGreyBackoff = () => {
+        greyRetryDelay = GREY_RECHECK_BASE_MS;
+        if (greyRetryTimer) {
+            window.clearTimeout(greyRetryTimer);
+            greyRetryTimer = null;
+        }
+    };
+
     const updateLeds = () => {
         if (ledFetchInFlight) {
             return;
@@ -84,10 +118,22 @@ document.addEventListener("DOMContentLoaded", function() {
                     const status = computeStatus(lastIso);
                     setLedStatus(led, status);
                 });
+
+                const hasGrey = Array.from(leds).some((led) =>
+                    led.classList.contains("status-gray"),
+                );
+                if (hasGrey) {
+                    bumpGreyBackoff();
+                    scheduleGreyRetry();
+                } else {
+                    resetGreyBackoff();
+                }
             })
             .catch(error => {
                 console.error("Error fetching LED status data after retries:", error);
                 leds.forEach(led => setLedStatus(led, "status-gray"));
+                bumpGreyBackoff();
+                scheduleGreyRetry();
             })
             .finally(() => {
                 ledFetchInFlight = false;
@@ -99,16 +145,6 @@ document.addEventListener("DOMContentLoaded", function() {
 
     updateLeds();
     setInterval(updateLeds, REFRESH_INTERVAL);
-
-    const GREY_RECHECK_INTERVAL = 3000; // 3 seconds
-    setInterval(() => {
-        const hasGrey = Array.from(leds).some((led) =>
-            led.classList.contains("status-gray"),
-        );
-        if (hasGrey) {
-            updateLeds();
-        }
-    }, GREY_RECHECK_INTERVAL);
 
 
 /*	

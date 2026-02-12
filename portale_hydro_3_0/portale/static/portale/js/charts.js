@@ -586,10 +586,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (!noDataMessage && chartBody) {
             noDataMessage = document.createElement("div");
-            noDataMessage.className = "facility-no-data chart-no-data is-hidden";
-            noDataMessage.innerHTML =
-                "<strong>Nessun dato disponibile.</strong><br />" +
-                "<span class='facility-no-data-text'>Riprova piu tardi.</span>";
+            noDataMessage.className = "chart-no-data-overlay is-hidden";
+            noDataMessage.textContent = "No data retrieved";
             chartBody.appendChild(noDataMessage);
         }
 
