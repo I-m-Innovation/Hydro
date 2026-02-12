@@ -37,6 +37,9 @@
       <span title="facility-status" class="status-dot status-gray" aria-label="Stato misuratore" data-misuratore-id="{{misuratore.id_misuratore}}"></span>
       <h2 class="facility-title">{{misuratore.name}}</h2>
     </div>
+    <div id="api-load-status" class="api-load-status is-hidden" aria-live="polite">
+      Caricamento dati in corso...
+    </div>
     
 
     <div class="facility-grid">
@@ -152,6 +155,13 @@
                   aria-label="Informazioni sulla decimazione LTTB"
                   data-tooltip="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
                   title="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
+                >i</button>
+                <button
+                  class="chart-info"
+                  type="button"
+                  aria-label="Informazioni sui range lunghi"
+                  data-tooltip="Per i range 6m, 1y e all il grafico mostra solo le medie giornaliere per ridurre il carico e ottimizzare le prestazioni."
+                  title="Per i range 6m, 1y e all il grafico mostra solo le medie giornaliere per ridurre il carico e ottimizzare le prestazioni."
                 >i</button>
                 <button class="chart-zoom" type="button" data-target="chart-flow-rate" aria-label="Zoom grafico portata">+</button>
                 <button class="chart-reset" type="button" data-target="chart-flow-rate" aria-label="Reset zoom grafico portata">Reset</button>

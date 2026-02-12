@@ -1,5 +1,6 @@
 from datetime import timedelta
 import time
+import re
 
 from django.http import JsonResponse
 from django.shortcuts import render
@@ -8,6 +9,26 @@ from django.db.models import Max
 from django.contrib.auth.decorators import login_required
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
+
+CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
+MAX_ID_MISURATORE_LEN = 128
+ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
+
+
+def validate_id_misuratore(raw_value):
+    if raw_value is None:
+        return None, "id_misuratore is required"
+    if not isinstance(raw_value, str):
+        raw_value = str(raw_value)
+    if len(raw_value) == 0:
+        return None, "id_misuratore is required"
+    if len(raw_value) > MAX_ID_MISURATORE_LEN:
+        return None, f"id_misuratore is too long (max {MAX_ID_MISURATORE_LEN})"
+    if CONTROL_CHARS_RE.search(raw_value):
+        return None, "id_misuratore contains invalid control characters"
+    if not any(not ch.isspace() for ch in raw_value):
+        return None, "id_misuratore cannot be only whitespace"
+    return raw_value, None
 
 @login_required
 def home(request):
@@ -29,13 +50,142 @@ def facilities_map(request):
 
 @login_required
 def measurements_api(request):
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+    range_key = request.GET.get("range", "24h")
+    if range_key not in ALLOWED_RANGE_KEYS:
         return JsonResponse(
-            {"error": "id_misuratore is required"},
+            {
+                "error": "invalid range",
+                "allowed": sorted(ALLOWED_RANGE_KEYS),
+            },
             status=400,
         )
-    range_key = request.GET.get("range", "24h")
+    use_mv = range_key in {"6m", "1y", "all"}
+
+    max_points_by_range = {
+        "24h": None,
+        "7d": 10000,
+        "1m": 10000,
+        "6m": 10000,
+        "1y": 10000,
+        "all": 20000,
+    }
+    max_points = max_points_by_range.get(range_key, 25000)
+
+    print(
+        "[measurements_api] "
+        f"id={id_misuratore} range={range_key} "
+        f"source={'mv_flow_daily_avg' if use_mv else 'tab_measurements_clean'}"
+    )
+
+    if use_mv:
+        with connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT MAX(day)
+                FROM hydro.mv_flow_daily_avg
+                WHERE id_misuratore = %s
+                """,
+                [id_misuratore],
+            )
+            latest_day = cursor.fetchone()[0]
+
+            if not latest_day:
+                return JsonResponse(
+                    {
+                        "timestamps": [],
+                        "flow_ls_raw": [],
+                        "flow_ls_smoothed": [],
+                        "is_outlier": [],
+                    }
+                )
+
+            cutoff = None
+            if range_key == "6m":
+                cutoff = latest_day - timedelta(days=182)
+            elif range_key == "1y":
+                cutoff = latest_day - timedelta(days=365)
+
+            where_sql = "WHERE id_misuratore = %s"
+            params = [id_misuratore]
+            if cutoff:
+                where_sql += " AND day >= %s AND day <= %s"
+                params.extend([cutoff, latest_day])
+
+            cursor.execute(
+                f"""
+                SELECT COUNT(*)
+                FROM hydro.mv_flow_daily_avg
+                {where_sql}
+                """,
+                params,
+            )
+            total = cursor.fetchone()[0] or 0
+            if total == 0:
+                return JsonResponse(
+                    {
+                        "timestamps": [],
+                        "flow_ls_raw": [],
+                        "flow_ls_smoothed": [],
+                        "is_outlier": [],
+                    }
+                )
+
+            step = 1
+            if max_points:
+                step = max(1, total // max_points)
+
+            cursor.execute(
+                f"""
+                SELECT day, flow_ls_raw_avg, flow_ls_smoothed_avg
+                FROM hydro.mv_flow_daily_avg
+                {where_sql}
+                ORDER BY day
+                """,
+                params,
+            )
+
+            timestamps = []
+            flow_raw = []
+            flow_smoothed = []
+            outliers = []
+            i = 0
+            while True:
+                chunk = cursor.fetchmany(5000)
+                if not chunk:
+                    break
+                for day, flow_ls_raw_avg, flow_ls_smoothed_avg in chunk:
+                    if step > 1 and i % step != 0:
+                        i += 1
+                        continue
+                    timestamps.append(day.isoformat())
+                    flow_raw.append(
+                        float(flow_ls_raw_avg)
+                        if flow_ls_raw_avg is not None
+                        else None
+                    )
+                    flow_smoothed.append(
+                        float(flow_ls_smoothed_avg)
+                        if flow_ls_smoothed_avg is not None
+                        else None
+                    )
+                    outliers.append(None)
+                    i += 1
+
+        data = {
+            "timestamps": timestamps,
+            "flow_ls_raw": flow_raw,
+            "flow_ls_smoothed": flow_smoothed,
+            "is_outlier": outliers,
+        }
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} "
+            f"mv_rows={total} returned_points={len(timestamps)} step={step}"
+        )
+        return JsonResponse(data)
     base_qs = tab_measurements_clean.objects.filter(
         id_misuratore=id_misuratore
     ).values_list(
@@ -54,10 +204,6 @@ def measurements_api(request):
             cutoff = latest - timedelta(days=7)
         elif range_key == "1m":
             cutoff = latest - timedelta(days=30)
-        elif range_key == "6m":
-            cutoff = latest - timedelta(days=182)
-        elif range_key == "1y":
-            cutoff = latest - timedelta(days=365)
 
         if cutoff:
             rows = base_qs.filter(
@@ -66,15 +212,7 @@ def measurements_api(request):
         else:
             rows = base_qs.order_by("data_misurazione")
 
-    max_points_by_range = {
-        "24h": None,
-        "7d": 10000,
-        "1m": 10000,
-        "6m": 10000,
-        "1y": 10000,
-        "all": 20000,
-    }
-    max_points = max_points_by_range.get(range_key, 25000)
+
     step = 1
     if max_points:
         total = rows.count()
@@ -88,6 +226,15 @@ def measurements_api(request):
                 }
             )
         step = max(1, total // max_points)
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} raw_rows={total}"
+        )
+    else:
+        print(
+            "[measurements_api] "
+            f"id={id_misuratore} range={range_key} raw_rows={rows.count()}"
+        )
 
     timestamps = []
     flow_raw = []
@@ -109,20 +256,37 @@ def measurements_api(request):
         "flow_ls_smoothed": flow_smoothed,
         "is_outlier": outliers,
     }
+    print(
+        "[measurements_api] "
+        f"id={id_misuratore} range={range_key} "
+        f"returned_points={len(timestamps)} step={step}"
+    )
     return JsonResponse(data)
 
 
 @login_required
 def duration_curve_api(request):
     t0 = time.perf_counter()
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
-        return JsonResponse(
-            {"error": "id_misuratore is required"},
-            status=400,
-        )
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
 
     with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT COUNT(*)
+            FROM hydro.mv_flow_duration_curve_daily
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        total = cursor.fetchone()[0] or 0
+        if total == 0:
+            return JsonResponse({"exceedance_percent": [], "flow_ls_smoothed": []})
+
+        max_points = 20000
+        step = max(1, total // max_points) if total > max_points else 1
+
         cursor.execute(
             """
             SELECT flow_avg_day, p_exceed
@@ -132,20 +296,21 @@ def duration_curve_api(request):
             """,
             [id_misuratore],
         )
-        rows = cursor.fetchall()
+        flows = []
+        exceedance = []
+        i = 0
+        while True:
+            chunk = cursor.fetchmany(5000)
+            if not chunk:
+                break
+            for flow, p in chunk:
+                if step > 1 and i % step != 0:
+                    i += 1
+                    continue
+                flows.append(float(flow))
+                exceedance.append(float(p))
+                i += 1
     t1 = time.perf_counter()
-
-    total = len(rows)
-    if total == 0:
-        return JsonResponse({"exceedance_percent": [], "flow_ls_smoothed": []})
-
-    max_points = 20000
-    if total > max_points:
-        step = max(1, total // max_points)
-        rows = rows[::step]
-
-    flows = [float(flow) for flow, _p in rows]
-    exceedance = [float(p) for _flow, p in rows]
 
     data = {
         "exceedance_percent": exceedance,
@@ -161,12 +326,9 @@ def duration_curve_api(request):
 
 @login_required
 def flow_histogram_api(request):
-    id_misuratore = request.GET.get("id_misuratore")
-    if not id_misuratore:
-        return JsonResponse(
-            {"error": "id_misuratore is required"},
-            status=400,
-        )
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
 
     with connection.cursor() as cursor:
         cursor.execute(
@@ -218,6 +380,9 @@ def flow_histogram_api(request):
 
 @login_required
 def misuratore_detail(request, id_misuratore):
+    id_misuratore, error = validate_id_misuratore(id_misuratore)
+    if error:
+        return JsonResponse({"error": error}, status=400)
     misuratore = (
         tab_misuratori.objects.filter(id_misuratore=id_misuratore)
         .only(
@@ -268,18 +433,22 @@ def misuratore_detail(request, id_misuratore):
 
 @login_required
 def led_status_api(request):
-    rows = (
-        tab_measurements_clean.objects
-        .values("id_misuratore")
-        .annotate(latest_measurement=Max("data_misurazione"))
-        .order_by("id_misuratore")
-    )
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT id_misuratore, name, latest_measurement
+            FROM hydro.mv_led_status
+            ORDER BY id_misuratore
+            """
+        )
+        rows = cursor.fetchall()
 
     data = {
         "items": [
             {
-                "id_misuratore": row["id_misuratore"],
-                "latest_measurement": row["latest_measurement"].isoformat().replace("+00:00", "Z") if row["latest_measurement"] else None,
+                "id_misuratore": row[0],
+                "name": row[1],
+                "latest_measurement": row[2].isoformat().replace("+00:00", "Z") if row[2] else None,
             }
             for row in rows
         ]

@@ -11,7 +11,10 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 import os
+import sys
 from pathlib import Path
+
+
 
 try:
     from dotenv import load_dotenv
@@ -103,20 +106,30 @@ WSGI_APPLICATION = 'portale_hydro_3_0.wsgi.application'
 
 # Database
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
-
 DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv("DJANGO_DB_NAME", "hydro"),
-        'USER': os.getenv("DJANGO_DB_USER", "postgres"),
-        'PASSWORD': os.getenv("DJANGO_DB_PASSWORD", ""),
-        'HOST': os.getenv("DJANGO_DB_HOST", "localhost"),
-        'PORT': os.getenv("DJANGO_DB_PORT", "5432"),
-        'OPTIONS': {
-            'options': os.getenv("DJANGO_DB_OPTIONS", "-c search_path=hydro"),
+    "default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": os.getenv("DJANGO_DB_NAME", "hydro"),
+        "USER": os.getenv("DJANGO_DB_USER", "postgres"),
+        "PASSWORD": os.getenv("DJANGO_DB_PASSWORD", ""),
+        "HOST": os.getenv("DJANGO_DB_HOST", "localhost"),
+        "PORT": os.getenv("DJANGO_DB_PORT", "5432"),
+        "OPTIONS": {
+            "options": os.getenv("DJANGO_DB_OPTIONS", "-c search_path=hydro"),
         },
     }
 }
+
+if "test" in sys.argv:
+    DATABASES["default"]["OPTIONS"]["options"] = "-c search_path=public"
+    LOGGING = {
+        "version": 1,
+        "disable_existing_loggers": False,
+        "handlers": {
+            "console": {"class": "logging.StreamHandler"},
+        },
+        "root": {"handlers": ["console"], "level": "INFO"},
+    }
 
 
 # Password validation

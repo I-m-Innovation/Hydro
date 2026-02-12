@@ -32,9 +32,68 @@ document.addEventListener("DOMContentLoaded", function() {
         return "status-green";                        // Less than 2 hours
     };
 
+    const fetchJsonWithRetry = async (url, retries = 3, delayMs = 1000) => {
+        let lastError = null;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            try {
+                const response = await fetch(url, { cache: "no-store" });
+                const text = await response.text();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+                }
+                return JSON.parse(text);
+            } catch (err) {
+                lastError = err;
+                if (attempt < retries) {
+                    await new Promise((resolve) => setTimeout(resolve, delayMs));
+                }
+            }
+        }
+        throw lastError || new Error("Unknown fetch error");
+    };
+
+    let ledFetchInFlight = false;
+
+    const GREY_RECHECK_BASE_MS = 3000; // 3 seconds
+    const GREY_RECHECK_MAX_MS = 60000; // 60 seconds
+    let greyRetryDelay = GREY_RECHECK_BASE_MS;
+    let greyRetryTimer = null;
+
+    const scheduleGreyRetry = () => {
+        if (greyRetryTimer) {
+            return;
+        }
+        greyRetryTimer = window.setTimeout(() => {
+            greyRetryTimer = null;
+            const hasGrey = Array.from(leds).some((led) =>
+                led.classList.contains("status-gray"),
+            );
+            if (hasGrey) {
+                updateLeds();
+            } else {
+                greyRetryDelay = GREY_RECHECK_BASE_MS;
+            }
+        }, greyRetryDelay);
+    };
+
+    const bumpGreyBackoff = () => {
+        greyRetryDelay = Math.min(GREY_RECHECK_MAX_MS, Math.ceil(greyRetryDelay * 2));
+    };
+
+    const resetGreyBackoff = () => {
+        greyRetryDelay = GREY_RECHECK_BASE_MS;
+        if (greyRetryTimer) {
+            window.clearTimeout(greyRetryTimer);
+            greyRetryTimer = null;
+        }
+    };
+
     const updateLeds = () => {
-        fetch(API_ENDPOINT)
-            .then(response => response.json())
+        if (ledFetchInFlight) {
+            return;
+        }
+        ledFetchInFlight = true;
+        fetchJsonWithRetry(API_ENDPOINT, 3, 2000)
             .then((payload) => {
                 const lastById = new Map();
 
@@ -59,12 +118,30 @@ document.addEventListener("DOMContentLoaded", function() {
                     const status = computeStatus(lastIso);
                     setLedStatus(led, status);
                 });
+
+                const hasGrey = Array.from(leds).some((led) =>
+                    led.classList.contains("status-gray"),
+                );
+                if (hasGrey) {
+                    bumpGreyBackoff();
+                    scheduleGreyRetry();
+                } else {
+                    resetGreyBackoff();
+                }
             })
             .catch(error => {
-                console.error("Error fetching LED status data:", error);
+                console.error("Error fetching LED status data after retries:", error);
                 leds.forEach(led => setLedStatus(led, "status-gray"));
+                bumpGreyBackoff();
+                scheduleGreyRetry();
+            })
+            .finally(() => {
+                ledFetchInFlight = false;
             });
     };
+
+    window.refreshLedStatus = updateLeds;
+    document.addEventListener("led-status:refresh", updateLeds);
 
     updateLeds();
     setInterval(updateLeds, REFRESH_INTERVAL);

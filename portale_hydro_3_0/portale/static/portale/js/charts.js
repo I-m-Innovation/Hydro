@@ -16,8 +16,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const LONG_GAP_RANGES = new Set(["6m", "1y", "all"]);
 
     const grid = document.querySelector(".facility-plot-grid");
+    const apiLoadStatus = document.getElementById("api-load-status");
     const instances = new Map();
     const pollingIntervals = new Map();
+    let apiQueue = Promise.resolve();
+    let pendingInitialLoads = 0;
+    let initialLoadActive = true;
 
     const isFlowChart = (cfg) => cfg.id === "chart-flow-rate";
     const isDurationCurve = (cfg) => cfg.apiMode === "duration_curve";
@@ -71,6 +75,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const toMillis = (value) => {
         const parsed = Date.parse(value);
         return Number.isFinite(parsed) ? parsed : null;
+    };
+
+    const fetchJsonWithRetry = async (url, retries = 3, delayMs = 2000, maxDelayMs = 20000) => {
+        let lastError = null;
+        for (let attempt = 0; attempt <= retries; attempt += 1) {
+            try {
+                const response = await fetch(url, { cache: "no-store" });
+                const text = await response.text();
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
+                }
+                return JSON.parse(text);
+            } catch (err) {
+                lastError = err;
+                if (attempt < retries) {
+                    const backoff = Math.min(maxDelayMs, delayMs * (2 ** attempt));
+                    await new Promise((resolve) => setTimeout(resolve, backoff));
+                }
+            }
+        }
+        throw lastError || new Error("Unknown fetch error");
     };
 
     const computeYAtX = (xs, ys, xTarget) => {
@@ -556,9 +581,30 @@ document.addEventListener("DOMContentLoaded", () => {
         const decimationInfoButton = chartCard?.querySelector(
             "[data-decimation-info]",
         );
+        const chartBody = chartCard?.querySelector(".chart-card-body");
+        let noDataMessage = chartCard?.querySelector(".chart-no-data");
+
+        if (!noDataMessage && chartBody) {
+            noDataMessage = document.createElement("div");
+            noDataMessage.className = "chart-no-data-overlay is-hidden";
+            noDataMessage.textContent = "No data retrieved";
+            chartBody.appendChild(noDataMessage);
+        }
 
         const setLoading = (isLoading) => {
             chartCard?.classList.toggle("is-loading", isLoading);
+        };
+        const setApiLoadStatus = (isLoading) => {
+            if (!apiLoadStatus) {
+                return;
+            }
+            apiLoadStatus.classList.toggle("is-hidden", !isLoading);
+        };
+        const setNoDataVisible = (isVisible) => {
+            if (!noDataMessage) {
+                return;
+            }
+            noDataMessage.classList.toggle("is-hidden", !isVisible);
         };
 
         const datasetConfigs = cfg.datasets || [
@@ -814,15 +860,21 @@ document.addEventListener("DOMContentLoaded", () => {
                     ? apiBase
                     : `${apiBase}?range=${encodeURIComponent(rangeKey)}`;
 
-            const loadApiData = () => {
+            const enqueueApiLoad = (task, isInitial = false) => {
+                if (isInitial) {
+                    pendingInitialLoads += 1;
+                    setApiLoadStatus(true);
+                }
+                apiQueue = apiQueue
+                    .then(task)
+                    .catch(() => {})
+                    .then(() => new Promise((resolve) => setTimeout(resolve, 200)));
+                return apiQueue;
+            };
+
+            const loadApiData = (isInitial = false) => enqueueApiLoad(() => {
                 setLoading(true);
-                fetch(apiUrl)
-                    .then((response) => {
-                        if (!response.ok) {
-                            throw new Error("API error");
-                        }
-                        return response.json();
-                    })
+                return fetchJsonWithRetry(apiUrl, 3, 1000)
                     .then((data) => {
                         console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
 
@@ -833,6 +885,19 @@ document.addEventListener("DOMContentLoaded", () => {
                                 : data?.timestamps || [];
                         if (!Array.isArray(timestamps)) {
                             return;
+                        }
+                        
+                        // Check if arrays are empty (no data retrieved from API)
+                        if (isFlowChart(cfg)) {
+                            const flowRaw = data?.flow_ls_raw || [];
+                            const flowSmoothed = data?.flow_ls_smoothed || [];
+                            const isEmpty = timestamps.length === 0 && flowRaw.length === 0 && flowSmoothed.length === 0;
+                            setNoDataVisible(isEmpty);
+                        } else if (timestamps.length === 0) {
+                            setNoDataVisible(true);
+                            return;
+                        } else {
+                            setNoDataVisible(false);
                         }
 
                         const xValues = isFlowChart(cfg)
@@ -1041,16 +1106,24 @@ document.addEventListener("DOMContentLoaded", () => {
                             }, 0);
                         }
                     })
-                    .catch(() => {
+                    .catch((error) => {
+                        console.error(`[charts] ${cfg.id} API failed:`, error);
                         // Keep existing chart if API fails.
                     })
                     .finally(() => {
                         setLoading(false);
+                        if (isInitial) {
+                            pendingInitialLoads = Math.max(0, pendingInitialLoads - 1);
+                            if (pendingInitialLoads === 0 && initialLoadActive) {
+                                initialLoadActive = false;
+                                setApiLoadStatus(false);
+                            }
+                        }
                     });
-            };
+            }, isInitial);
 
             chart._reload = loadApiData;
-            loadApiData();
+            loadApiData(initialLoadActive);
 
             if (rangeKey === "24h" && isFlowChart(cfg)) {
                 const intervalId = window.setInterval(loadApiData, POLL_INTERVAL_MS);
@@ -1153,6 +1226,11 @@ document.addEventListener("DOMContentLoaded", () => {
             if (targetChart && typeof targetChart._reload === "function") {
                 console.log(`[charts] manual refresh ${targetId}`);
                 targetChart._reload();
+                if (typeof window.refreshLedStatus === "function") {
+                    window.refreshLedStatus();
+                } else {
+                    document.dispatchEvent(new Event("led-status:refresh"));
+                }
             } else {
                 console.log(`[charts] manual refresh skipped ${targetId}`);
             }

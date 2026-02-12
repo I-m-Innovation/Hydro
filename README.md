@@ -1,4 +1,58 @@
-Ultimo update - 09/02/2026
+Ultimo update - 12/02/2026
+
+## Ultimo update - 12/02/2026
+
+### Backend - Ottimizzazioni performance e LED status
+- `measurements_api` e `duration_curve_api`: fetch in chunk (no `fetchall`) per ridurre OOM.
+- Nuova MV `hydro.mv_led_status` con `id_misuratore`, `name`, `latest_measurement`.
+- Script SQL:
+  - `db_manager/scripts/ensure_mv_led_status.sql`
+  - `db_manager/scripts/refresh_mv_led_status.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_led_status.py`.
+- Scheduler refresh MV in `db_manager/run.py` + intervallo in `db_manager/config/settings.py` (`SECONDS_BETWEEN_REFRESH_LED_STATUS`).
+- Endpoint `led_status_api` ora legge da MV (`portale_hydro_3_0/portale/views.py`).
+
+### Frontend - LED e messaggi no-data
+- `led_status.js`: refresh manuale via `window.refreshLedStatus` e evento `led-status:refresh`.
+- `led_status.js`: backoff esponenziale sui retry quando LED resta grigio (riduce spam).
+- `charts.js`: il bottone "Aggiorna" dei grafici richiama anche il refresh LED.
+- `charts.js` + `style.css`: overlay centrato "No data retrieved" sopra il canvas quando API ritorna array vuoti.
+
+## Ultimo update - 11/02/2026
+
+### Backend - Materialized View per range lunghi
+- Creata MV `hydro.mv_flow_daily_avg` con medie giornaliere di `flow_ls_raw` e `flow_ls_smoothed`.
+- Aggiunti script SQL:
+  - `db_manager/scripts/ensure_mv_flow_daily_avg.sql`
+  - `db_manager/scripts/refresh_mv_flow_daily_avg.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_flow_daily_avg.py`.
+- Scheduler notturno (02:00 Europe/Rome) configurato in `db_manager/run.py`.
+- Parametri schedulazione in `db_manager/config/settings.py`:
+  - `MV_FLOW_DAILY_AVG_REFRESH_HOUR`
+  - `MV_FLOW_DAILY_AVG_REFRESH_MINUTE`
+  - `MV_FLOW_DAILY_AVG_REFRESH_TZ`
+- Check MV aggiunto allo startup (`db_manager/db/schema.py` + `db_manager/run.py`).
+
+### Backend - Endpoint misure
+- `measurements_api` usa la MV per i range lunghi (`6m`, `1y`, `all`) e la tabella raw per (`24h`, `7d`, `1m`).
+- Aggiunti log diagnostici su source, righe e punti restituiti.
+- Rimossa logica di cutoff non utilizzata per `6m/1y` nel path raw.
+
+### DB Manager - Refresh curve di durata
+- Refresh MV `mv_flow_duration_curve_daily` spostato a schedulazione notturna (03:00 Europe/Rome).
+- Parametri in `db_manager/config/settings.py`:
+  - `DURATION_CURVE_MV_REFRESH_HOUR`
+  - `DURATION_CURVE_MV_REFRESH_MINUTE`
+  - `DURATION_CURVE_MV_REFRESH_TZ`
+- Rimossa la schedulazione ogni 20s (`SECONDS_BETWEEN_REFRESH_MV`).
+
+### Frontend - Affidabilità fetch e messaggi
+- `charts.js`: retry con backoff esponenziale sui fetch API; log errori quando l'API fallisce.
+- `charts.js`: se i dati sono vuoti, mostra messaggio "Nessun dato disponibile" senza azzerare le etichette.
+- `led_status.js`: retry con 3 tentativi aggiuntivi prima di impostare il LED su grigio.
+
+### Frontend - Info grafico portata
+- Aggiunto pulsante info nel grafico portata per spiegare che `6m/1y/all` mostrano medie giornaliere per ottimizzazione.
 
 ## Ultimo update - 09/02/2026
 

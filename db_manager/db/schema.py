@@ -49,3 +49,27 @@ def ensure_flow_histogram_table():
     except Exception as e:
         print(f"[schema] flow histogram table error: {e}")
         raise
+
+def ensure_mv_flow_daily_avg():
+    try:
+        with get_conn() as conn:
+            sql = load_sql("ensure_mv_flow_daily_avg.sql")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        print("[schema] mv_flow_daily_avg ok")
+    except Exception as e:
+        print(f"[schema] mv_flow_daily_avg error: {e}")
+        raise
+
+def ensure_mv_led_status():
+    try:
+        with get_conn() as conn:
+            sql = load_sql("ensure_mv_led_status.sql")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        print("[schema] mv_led_status ok")
+    except Exception as e:
+        print(f"[schema] mv_led_status error: {e}")
+        raise

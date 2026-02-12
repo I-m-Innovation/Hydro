@@ -812,6 +812,36 @@ body.sidebar-collapsed #lista-impianti {
   display: none;
 }
 
+.chart-card-body {
+  position: relative;
+}
+
+.chart-no-data-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem;
+  background: rgba(249, 249, 249, 0.75);
+  color: #555;
+  font-weight: 700;
+  border-radius: 8px;
+  z-index: 4;
+}
+
+.api-load-status {
+  margin-bottom: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  border-radius: 8px;
+  background: #fff3cd;
+  color: #7a4a00;
+  font-weight: 600;
+  font-size: 0.95rem;
+  border: 1px solid #f5d58f;
+}
+
 /* =========================================================
    IFRAME CONTAINER (il tuo attuale)
    - Lascio la tua struttura, ma EVITO il transform:scale che
