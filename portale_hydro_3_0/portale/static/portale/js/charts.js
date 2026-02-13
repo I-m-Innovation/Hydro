@@ -695,7 +695,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const applyDurationCurveData = (
         chart,
         parsedValues,
-        timestamps,
+        xValues,
         index,
     ) => {
         const filteredPoints = [];
@@ -703,7 +703,7 @@ document.addEventListener("DOMContentLoaded", () => {
             if (value === null || value < -50) {
                 return;
             }
-            filteredPoints.push({ x: timestamps[i], y: value });
+            filteredPoints.push({ x: xValues[i], y: value });
         });
         chart.data.datasets[index].data = filteredPoints;
         return filteredPoints;
@@ -838,7 +838,9 @@ document.addEventListener("DOMContentLoaded", () => {
         console.log(`[charts] refreshed ${cfg.id} (${rangeKey})`);
 
         const timestamps = isDurationCurve(cfg)
-            ? data?.exceedance_percent || []
+            ? data?.exceedance_percent_smoothed ||
+                data?.exceedance_percent ||
+                []
             : isHistogram(cfg)
                 ? data?.range_start || []
                 : data?.timestamps || [];
@@ -868,7 +870,8 @@ document.addEventListener("DOMContentLoaded", () => {
         applyFlowXAxis(chart, cfg, rangeKey, xValues);
 
         let durationValues = null;
-        let durationFilteredPoints = null;
+        let durationXValues = null;
+        let durationFilteredPoints = [];
 
         datasetConfigs.forEach((ds, index) => {
             const sourceValues = data[ds.source] || [];
@@ -880,8 +883,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 );
             }
 
-            if (isDurationCurve(cfg) && durationValues === null) {
-                durationValues = parsedValues;
+            if (isDurationCurve(cfg)) {
+                const isPreferred =
+                    ds.source === "flow_ls_raw" ||
+                    durationValues === null;
+                if (isPreferred) {
+                    durationValues = parsedValues;
+                    durationXValues = ds.xSource
+                        ? data[ds.xSource] || []
+                        : timestamps;
+                }
             }
 
             if (isFlowChart(cfg) && decimationThreshold) {
@@ -899,15 +910,16 @@ document.addEventListener("DOMContentLoaded", () => {
             const useXYPoints = getDecimationEnabled() || isDurationCurve(cfg);
 
             if (isDurationCurve(cfg) && useXYPoints) {
+                const xValues = ds.xSource ? data[ds.xSource] || [] : timestamps;
                 const filteredPoints = applyDurationCurveData(
                     chart,
                     parsedValues,
-                    timestamps,
+                    xValues,
                     index,
                 );
-                if (durationFilteredPoints === null) {
-                    durationFilteredPoints = filteredPoints;
-                }
+                durationFilteredPoints = durationFilteredPoints.concat(
+                    filteredPoints,
+                );
                 return;
             }
 
@@ -942,7 +954,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (isDurationCurve(cfg)) {
             const y80 = computeYAtX(
-                timestamps,
+                durationXValues || timestamps,
                 durationValues || [],
                 cfg.staticVLineX,
             );
@@ -1111,11 +1123,24 @@ document.addEventListener("DOMContentLoaded", () => {
             staticVLineX: 80,
             datasets: [
                 {
-                    label: "Curva di durata",
+                    label: "Curva raw",
+                    color: "#6b7280",
+                    fillColor: "rgba(107, 114, 128, 0.18)",
+                    fill: false,
+                    source: "flow_ls_raw",
+                    xSource: "exceedance_percent_raw",
+                    order: 2,
+                    pointRadius: 1,
+                    pointHoverRadius: 2,
+                    borderWidth: 1,
+                },
+                {
+                    label: "Curva smoothed",
                     color: "#f59e0b",
                     fillColor: "rgba(245, 158, 11, 0.18)",
                     fill: false,
                     source: "flow_ls_smoothed",
+                    xSource: "exceedance_percent_smoothed",
                     order: 1,
                     pointRadius: 1,
                     pointHoverRadius: 2,

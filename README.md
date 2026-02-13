@@ -12,6 +12,27 @@ Ultimo update - 12/02/2026
 - Scheduler refresh MV in `db_manager/run.py` + intervallo in `db_manager/config/settings.py` (`SECONDS_BETWEEN_REFRESH_LED_STATUS`).
 - Endpoint `led_status_api` ora legge da MV (`portale_hydro_3_0/portale/views.py`).
 
+### Curva di durata - Nuova MV RAW vs SMOOTHED (2 decimali)
+- Creata MV `hydro.mv_flow_exceedance_raw_vs_smoothed_2d` per curva di durata con valori arrotondati a 2 decimali.
+- La MV include: `flow_2d`, `p_exceed_raw`, `p_exceed_smoothed`, `cnt_raw`, `cnt_smoothed`.
+- Nuovo job refresh MV: `db_manager/jobs/refresh_mv_flow_exceedance_raw_vs_smoothed_2d.py`.
+- Script SQL refresh: `db_manager/scripts/refresh_mv_flow_exceedance_raw_vs_smoothed_2d.sql`.
+- Scheduler notturno alle **04:00 Europe/Rome** in `db_manager/run.py`.
+- Parametri in `db_manager/config/settings.py`:
+  - `FLOW_EXCEEDANCE_MV_REFRESH_HOUR`
+  - `FLOW_EXCEEDANCE_MV_REFRESH_MINUTE`
+  - `FLOW_EXCEEDANCE_MV_REFRESH_TZ`
+- Endpoint `duration_curve_api` ora legge dalla nuova MV e restituisce:
+  - `exceedance_percent_raw` + `flow_ls_raw`
+  - `exceedance_percent_smoothed` + `flow_ls_smoothed`
+  - `exceedance_percent` (alias di smoothed per compatibilità)
+- Aggiunto header cache: `Cache-Control: public, max-age=72000` (20 ore).
+
+### Frontend - Curva di durata RAW vs SMOOTHED
+- `charts.js`: curva di durata ora visualizza **due linee** (raw e smoothed).
+- Ogni dataset usa il proprio asse X (`xSource` con exceedance percent dedicata).
+- La linea verticale all'80% usa il valore **raw**.
+
 ### Frontend - LED e messaggi no-data
 - `led_status.js`: refresh manuale via `window.refreshLedStatus` e evento `led-status:refresh`.
 - `led_status.js`: backoff esponenziale sui retry quando LED resta grigio (riduce spam).

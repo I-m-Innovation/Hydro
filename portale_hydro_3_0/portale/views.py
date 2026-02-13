@@ -275,46 +275,78 @@ def duration_curve_api(request):
         cursor.execute(
             """
             SELECT COUNT(*)
-            FROM hydro.mv_flow_duration_curve_daily
+            FROM hydro.mv_flow_exceedance_raw_vs_smoothed_2d
             WHERE id_misuratore = %s
             """,
             [id_misuratore],
         )
         total = cursor.fetchone()[0] or 0
         if total == 0:
-            return JsonResponse({"exceedance_percent": [], "flow_ls_smoothed": []})
-
-        max_points = 20000
-        step = max(1, total // max_points) if total > max_points else 1
+            resp = JsonResponse(
+                {
+                    "exceedance_percent": [],
+                    "flow_ls_smoothed": [],
+                    "exceedance_percent_raw": [],
+                    "flow_ls_raw": [],
+                    "exceedance_percent_smoothed": [],
+                }
+            )
+            resp["Cache-Control"] = "public, max-age=72000"  # 20 hours
+            return resp
 
         cursor.execute(
             """
-            SELECT flow_avg_day, p_exceed
-            FROM hydro.mv_flow_duration_curve_daily
+            SELECT flow_2d, p_exceed_raw, p_exceed_smoothed
+            FROM hydro.mv_flow_exceedance_raw_vs_smoothed_2d
             WHERE id_misuratore = %s
-            ORDER BY p_exceed
             """,
             [id_misuratore],
         )
-        flows = []
-        exceedance = []
-        i = 0
+        raw_points = []
+        smoothed_points = []
         while True:
             chunk = cursor.fetchmany(5000)
             if not chunk:
                 break
-            for flow, p in chunk:
-                if step > 1 and i % step != 0:
-                    i += 1
+            for flow, p_raw, p_smoothed in chunk:
+                if flow is None:
                     continue
-                flows.append(float(flow))
-                exceedance.append(float(p))
-                i += 1
+                flow_val = float(flow)
+                if p_raw is not None:
+                    raw_points.append((float(p_raw), flow_val))
+                if p_smoothed is not None:
+                    smoothed_points.append((float(p_smoothed), flow_val))
+
+        raw_points.sort(key=lambda x: x[0])
+        smoothed_points.sort(key=lambda x: x[0])
+
+        max_points = 20000
+        raw_step = max(1, len(raw_points) // max_points) if len(raw_points) > max_points else 1
+        sm_step = max(1, len(smoothed_points) // max_points) if len(smoothed_points) > max_points else 1
+
+        exceedance_raw = []
+        flows_raw = []
+        for i, (p, flow) in enumerate(raw_points):
+            if raw_step > 1 and i % raw_step != 0:
+                continue
+            exceedance_raw.append(p)
+            flows_raw.append(flow)
+
+        exceedance_smoothed = []
+        flows_smoothed = []
+        for i, (p, flow) in enumerate(smoothed_points):
+            if sm_step > 1 and i % sm_step != 0:
+                continue
+            exceedance_smoothed.append(p)
+            flows_smoothed.append(flow)
     t1 = time.perf_counter()
 
     data = {
-        "exceedance_percent": exceedance,
-        "flow_ls_smoothed": flows,
+        "exceedance_percent": exceedance_smoothed,
+        "flow_ls_smoothed": flows_smoothed,
+        "exceedance_percent_raw": exceedance_raw,
+        "flow_ls_raw": flows_raw,
+        "exceedance_percent_smoothed": exceedance_smoothed,
     }
     t2 = time.perf_counter()
     print(
@@ -322,7 +354,9 @@ def duration_curve_api(request):
         f"id={id_misuratore} rows={total} "
         f"query_ms={(t1 - t0)*1000:.1f} total_ms={(t2 - t0)*1000:.1f}"
     )
-    return JsonResponse(data)
+    resp = JsonResponse(data)
+    resp["Cache-Control"] = "public, max-age=72000"  # 20 hours
+    return resp
 
 @login_required
 def flow_histogram_api(request):

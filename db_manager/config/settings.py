@@ -31,6 +31,11 @@ DURATION_CURVE_MV_REFRESH_HOUR = 3  # 3 AM
 DURATION_CURVE_MV_REFRESH_MINUTE = 0
 DURATION_CURVE_MV_REFRESH_TZ = "Europe/Rome"
 
+# Refresh Flow Exceedance MV schedule (nightly at 4:00 AM Rome time)
+FLOW_EXCEEDANCE_MV_REFRESH_HOUR = 4  # 4 AM
+FLOW_EXCEEDANCE_MV_REFRESH_MINUTE = 0
+FLOW_EXCEEDANCE_MV_REFRESH_TZ = "Europe/Rome"
+
 # Tables
 RAW_TABLE_NAME = "hydro.tab_measurements_raw"
 

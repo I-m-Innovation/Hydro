@@ -73,3 +73,15 @@ def ensure_mv_led_status():
     except Exception as e:
         print(f"[schema] mv_led_status error: {e}")
         raise
+
+def ensure_mv_flow_exceedance_raw_vs_smoothed_2d():
+    try:
+        with get_conn() as conn:
+            sql = load_sql("ensure_mv_flow_exceedance_raw_vs_smoothed_2d.sql")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        print("[schema] mv_flow_exceedance_raw_vs_smoothed_2d ok")
+    except Exception as e:
+        print(f"[schema] mv_flow_exceedance_raw_vs_smoothed_2d error: {e}")
+        raise
