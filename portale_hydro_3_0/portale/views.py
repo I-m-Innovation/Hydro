@@ -275,7 +275,7 @@ def duration_curve_api(request):
         cursor.execute(
             """
             SELECT COUNT(*)
-            FROM hydro.mv_flow_exceedance_raw_vs_smoothed_2d
+            FROM hydro.mv_flow_duration_curve_hourly_raw_local
             WHERE id_misuratore = %s
             """,
             [id_misuratore],
@@ -285,10 +285,7 @@ def duration_curve_api(request):
             resp = JsonResponse(
                 {
                     "exceedance_percent": [],
-                    "flow_ls_smoothed": [],
-                    "exceedance_percent_raw": [],
                     "flow_ls_raw": [],
-                    "exceedance_percent_smoothed": [],
                 }
             )
             resp["Cache-Control"] = "public, max-age=72000"  # 20 hours
@@ -296,57 +293,40 @@ def duration_curve_api(request):
 
         cursor.execute(
             """
-            SELECT flow_2d, p_exceed_raw, p_exceed_smoothed
-            FROM hydro.mv_flow_exceedance_raw_vs_smoothed_2d
+            SELECT flow_avg_hour_raw, p_exceed
+            FROM hydro.mv_flow_duration_curve_hourly_raw_local
             WHERE id_misuratore = %s
+            ORDER BY p_exceed
             """,
             [id_misuratore],
         )
-        raw_points = []
-        smoothed_points = []
+        points = []
         while True:
             chunk = cursor.fetchmany(5000)
             if not chunk:
                 break
-            for flow, p_raw, p_smoothed in chunk:
+            for flow, p_exceed in chunk:
                 if flow is None:
                     continue
                 flow_val = float(flow)
-                if p_raw is not None:
-                    raw_points.append((float(p_raw), flow_val))
-                if p_smoothed is not None:
-                    smoothed_points.append((float(p_smoothed), flow_val))
-
-        raw_points.sort(key=lambda x: x[0])
-        smoothed_points.sort(key=lambda x: x[0])
+                if p_exceed is not None:
+                    points.append((float(p_exceed), flow_val))
 
         max_points = 20000
-        raw_step = max(1, len(raw_points) // max_points) if len(raw_points) > max_points else 1
-        sm_step = max(1, len(smoothed_points) // max_points) if len(smoothed_points) > max_points else 1
+        step = max(1, len(points) // max_points) if len(points) > max_points else 1
 
-        exceedance_raw = []
+        exceedance = []
         flows_raw = []
-        for i, (p, flow) in enumerate(raw_points):
-            if raw_step > 1 and i % raw_step != 0:
+        for i, (p, flow) in enumerate(points):
+            if step > 1 and i % step != 0:
                 continue
-            exceedance_raw.append(p)
+            exceedance.append(p)
             flows_raw.append(flow)
-
-        exceedance_smoothed = []
-        flows_smoothed = []
-        for i, (p, flow) in enumerate(smoothed_points):
-            if sm_step > 1 and i % sm_step != 0:
-                continue
-            exceedance_smoothed.append(p)
-            flows_smoothed.append(flow)
     t1 = time.perf_counter()
 
     data = {
-        "exceedance_percent": exceedance_smoothed,
-        "flow_ls_smoothed": flows_smoothed,
-        "exceedance_percent_raw": exceedance_raw,
+        "exceedance_percent": exceedance,
         "flow_ls_raw": flows_raw,
-        "exceedance_percent_smoothed": exceedance_smoothed,
     }
     t2 = time.perf_counter()
     print(

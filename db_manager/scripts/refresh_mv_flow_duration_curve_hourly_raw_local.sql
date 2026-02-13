@@ -1,0 +1,1 @@
+REFRESH MATERIALIZED VIEW CONCURRENTLY hydro.mv_flow_duration_curve_hourly_raw_local;

@@ -33,6 +33,86 @@ Ultimo update - 12/02/2026
 - Ogni dataset usa il proprio asse X (`xSource` con exceedance percent dedicata).
 - La linea verticale all'80% usa il valore **raw**.
 
+### Curva di durata - MV oraria RAW (ora locale)
+- Creata MV `hydro.mv_flow_duration_curve_hourly_raw_local` con **medie orarie** (Europe/Rome) della portata RAW.
+- Script SQL:
+  - `db_manager/scripts/ensure_mv_flow_duration_curve_hourly_raw_local.sql`
+  - `db_manager/scripts/refresh_mv_flow_duration_curve_hourly_raw_local.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_flow_duration_curve_hourly_raw_local.py`.
+- Scheduler notturno alle **04:00 Europe/Rome** in `db_manager/run.py`.
+- Parametri in `db_manager/config/settings.py`:
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_HOUR`
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_MINUTE`
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_TZ`
+- Endpoint `duration_curve_api` ora usa la MV oraria e restituisce:
+  - `exceedance_percent` + `flow_ls_raw` (media oraria RAW)
+- `charts.js`: la curva di durata mostra **una sola linea** (media oraria RAW).
+- **Decisione finale**: la curva di durata usa il **raggruppamento orario** (ora locale Europe/Rome).
+
+#### Template MV (raggruppamenti orari multipli)
+Di seguito un template SQL per costruire una MV con raggruppamento orario (es. 3h). Da usare come base per creare altre granularitÃ  orarie:
+
+```sql
+CREATE MATERIALIZED VIEW hydro.mv_flow_duration_curve_3h_raw_local AS
+WITH base AS (
+  SELECT
+    c.id_misuratore,
+    (c.data_misurazione AT TIME ZONE 'Europe/Rome') AS ts_local,
+    c.flow_ls_raw
+  FROM hydro.tab_measurements_clean c
+  WHERE c.flow_ls_raw IS NOT NULL
+),
+binned AS (
+  SELECT
+    id_misuratore,
+    date_bin(
+      INTERVAL '3 hours',
+      ts_local,
+      TIMESTAMP '2000-01-01 00:00:00'
+    ) AS bin_3h_local,
+    avg(flow_ls_raw)::double precision AS flow_avg_3h_raw
+  FROM base
+  GROUP BY
+    id_misuratore,
+    date_bin(INTERVAL '3 hours', ts_local, TIMESTAMP '2000-01-01 00:00:00')
+),
+ranked AS (
+  SELECT
+    b.id_misuratore,
+    b.bin_3h_local,
+    b.flow_avg_3h_raw,
+    SUM(1) OVER (
+      PARTITION BY b.id_misuratore
+      ORDER BY b.flow_avg_3h_raw DESC
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cum_ge,
+    COUNT(*) OVER (PARTITION BY b.id_misuratore) AS total_n
+  FROM binned b
+)
+SELECT
+  id_misuratore,
+  bin_3h_local,
+  flow_avg_3h_raw,
+  (cum_ge::double precision / NULLIF(total_n, 0)::double precision) * 100.0 AS p_exceed
+FROM ranked;
+
+CREATE UNIQUE INDEX mv_flow_duration_curve_3h_raw_local_uq
+  ON hydro.mv_flow_duration_curve_3h_raw_local (id_misuratore, bin_3h_local);
+```
+
+Query di esempio per plottare la curva da pgAdmin:
+
+```sql
+SELECT
+  p_exceed        AS x_p_exceed,
+  flow_avg_3h_raw AS y_flow
+FROM hydro.mv_flow_duration_curve_3h_raw_local
+WHERE id_misuratore = 'Gateway 1'
+ORDER BY x_p_exceed ASC;
+```
+
+Note: per altre granularitÃ , cambia `INTERVAL '3 hours'` (es. `1 hours`, `6 hours`, `12 hours`) e rinomina coerentemente la MV e l'indice.
+
 ### Frontend - LED e messaggi no-data
 - `led_status.js`: refresh manuale via `window.refreshLedStatus` e evento `led-status:refresh`.
 - `led_status.js`: backoff esponenziale sui retry quando LED resta grigio (riduce spam).
