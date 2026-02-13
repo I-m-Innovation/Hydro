@@ -1124,7 +1124,7 @@ document.addEventListener("DOMContentLoaded", () => {
             datasets: [
                 {
                     label: "Curva durata (media oraria raw)",
-                    color: "#6b7280",
+                    color: "#ff9100",
                     fillColor: "rgba(107, 114, 128, 0.18)",
                     fill: false,
                     source: "flow_ls_raw",
