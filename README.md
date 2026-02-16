@@ -159,6 +159,14 @@ class tab_statistiche_misuratori # Statistiche aggregate
 - **SQL injection protection** via ORM e parametri
 - **CSRF protection** Django standard
 
+#### Riattivare il login (se rimosso)
+Per ripristinare l'autenticazione:
+- Ripristina i decorator `@login_required` nelle view in `portale_hydro_3_0/portale/views.py`.
+- Ripristina l'import `from django.contrib.auth.decorators import login_required` nello stesso file.
+- Riattiva la route auth in `portale_hydro_3_0/portale_hydro_3_0/urls.py`:
+  `path("accounts/", include("django.contrib.auth.urls")),`
+- Riattiva `LOGIN_URL` (e facoltativamente `LOGOUT_REDIRECT_URL`) in `portale_hydro_3_0/portale_hydro_3_0/settings.py`.
+
 #### 🎨 User Experience
 - **Responsive design** con sidebar navigazione
 - **Live status indicators** per ogni misuratore

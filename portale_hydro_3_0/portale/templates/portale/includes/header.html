@@ -24,7 +24,7 @@
     <ul>
       <li><a href="{% url 'facilities_map' %}">Mappa</a></li>
       <li><a href="{% url 'home'%}">Misuratori</a></li>
-      <li>
+      {% comment %} <li>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}
           <button type="submit" class="logout-button" aria-label="Logout" title="Logout">
@@ -35,7 +35,7 @@
             />
           </button>
         </form>
-      </li>
+      </li> {% endcomment %}
     </ul>
   </nav>
 </header>
