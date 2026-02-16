@@ -1,4 +1,98 @@
-Ultimo update - 12/02/2026
+# 🏗️ Hydra 3.0 - Sistema di Monitoraggio Idrometrico
+
+##  Panoramica del Progetto
+
+**Hydra 3.0** è una piattaforma di monitoraggio real-time per misurazioni idrologiche che combina:
+- **ETL Pipeline** real-time da Azure EventHub 
+- **Dashboard Web** Django con visualizzazioni avanzate
+- **Processamento Statistico** (filtro Hampel per outlier detection)
+- **Analytics** con curve di durata e istogrammi di flusso
+
+---
+
+##  Architettura Database
+
+![Database Schema](docs/images/Database_Hydro_Diagram.jpeg)
+
+*Schema delle tabelle principali del sistema Hydra 3.0 con relazioni e materialized views*
+
+---
+
+## 📊 Valutazione Tecnica del Progetto
+
+### ✅ **Architettura Generale - BUONA**
+- **Separazione microservizi**: `db_manager` (ETL) e `portale_hydro_3_0` (Web) ben distinti
+- **Pipeline 5-stage**: Raw → Transform → Clean → Statistics → Analytics  
+- **Real-time processing**: Intervalli configurabili da 20s a 24h
+- **Schema PostgreSQL** ben strutturato con materialized views per performance
+
+### ✅ **Qualità del Codice - MOLTO BUONA**
+- **Input validation** robusta con test coverage
+- **SQL injection protection** via parameterized queries
+- **Processamento statistico** scientificamente corretto (Hampel filter)
+- **Frontend moderno** con Chart.js e UX patterns solidi
+
+### ✅ **Adeguatezza per Uso Interno - OTTIMALE**
+**Per 3-4 utenti aziendali occasionali**: **9/10** 🎉
+- Architettura **over-engineered in modo positivo** 
+- Qualità **enterprise-grade** per esigenze interne
+- Performance più che sufficienti per il carico target
+- Manutenibilità eccellente
+
+---
+
+## 🚨 Items da Completare
+
+### **🔒 P0 - Sicurezza Base (5 minuti)**
+- [ ] **Rimuovere credenziali hardcoded** in `db_manager/jobs/regenerate_clean_measurements_single.py`
+- [ ] **Aggiungere variabili ambiente** per credenziali database
+
+### **⚠️ P1 - Operatività (opzionale per uso interno)**  
+- [ ] **Script restart automatico** per db_manager (risolve memory leak via cron)
+- [ ] **Basic health check** endpoint per monitoraggio uptime
+- [ ] **Log rotation** automatica per logs applicativi
+
+### **🌟 P2 - Ignorabili per Uso Interno**
+- ❌ Connection pooling (non necessario per 3-4 utenti)
+- ❌ Rate limiting (superfluo con pochi utenti)
+- ❌ Horizontal scaling (single-machine deployment OK)
+- ❌ Advanced monitoring (nice-to-have ma non critico)
+
+---
+
+## 🚀 Status Deploy
+
+**PRONTO PER PRODUZIONE** per ambiente aziendale interno con minimal fixing:
+- Deploy **single-machine** (VM o physical)
+- PostgreSQL locale (no cluster needed) 
+- Nginx reverse proxy semplice
+- Systemd services per gestione processi
+
+---
+
+## 🔌 Disattivare / Riattivare CI/CD (Azure + GitHub)
+
+Se il deploy automatico parte quando fai push su `release`, per fermarlo (e poi riattivarlo) usa questi passi.
+
+### 1) Azure App Service (Deployment Center)
+**Disattivare**
+- Azure Portal → App Service → **Deployment Center**
+- Tab **Settings** → **Disconnect**
+
+**Riattivare**
+- Azure Portal → App Service → **Deployment Center**
+- **Connect** e scegli la sorgente (GitHub) e il branch `release`
+
+### 2) GitHub Actions (workflow di deploy)
+**Disattivare**
+- GitHub repo → tab **Actions**
+- Seleziona il workflow di deploy → menu (⋮) → **Disable workflow**
+
+**Riattivare**
+- GitHub repo → tab **Actions**
+- Seleziona il workflow di deploy → **Enable workflow**
+
+---
 
 ## Ultimo update - 12/02/2026
 
