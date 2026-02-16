@@ -28,6 +28,6 @@ urlpatterns = [
     path("", RedirectView.as_view(url="/portale/home/", permanent=False)),
     path("favicon.ico", lambda request: HttpResponse(status=204)),
     path('admin/', admin.site.urls),
-    # path('accounts/', include('django.contrib.auth.urls')),
+    path('accounts/', include('django.contrib.auth.urls')),
     path('portale/', include('portale.urls')),
 ]
