@@ -1,0 +1,16 @@
+{
+  "stale_devices": [
+    "Merone Camera di Manovra",
+    "SA6",
+    "Fiumefreddo",
+    "CU4",
+    "SA3",
+    "Sessa_Auronca",
+    "Merone II salto",
+    "Santissima",
+    "Merone III salto"
+  ],
+  "last_check": "2026-02-18T09:30:04.175743",
+  "total_stale": 9,
+  "total_active": 10
+}

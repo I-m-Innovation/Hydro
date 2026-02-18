@@ -266,3 +266,122 @@ Se il sito funziona sul PC server ma non è raggiungibile da altri PC:
 - **Profilo rete**: Imposta come "Privato" in Windows
 - **Firewall**: Regola in ingresso TCP port 8000 per profilo Privato
 - **Test connettività**: `Test-NetConnection <IP> -Port 8000` dal client
+
+---
+
+## 🤖 Servizio notifications_service (Sistema Notifiche Telegram)
+
+### Panoramica
+**notifications_service** è un servizio autonomo per il monitoraggio e alerting automatico tramite Telegram Bot. Opera indipendentemente dal portale web e dal db_manager, garantendo continuità delle notifiche anche in caso di malfunzionamenti degli altri servizi.
+
+### Architettura
+```
+notifications_service/
+├── config/
+│   └── settings.py              # Configurazioni DB, Telegram, timezone
+├── services/
+│   ├── database_service.py      # Connessione PostgreSQL e query
+│   └── telegram_service.py      # Gestione messaggi e formattazione
+├── jobs/                        # Script per esecuzione manuale
+│   ├── daily_report.py          # Rapporto completo misuratori
+│   └── check_stale.py           # Controllo dispositivi offline
+├── interactive_bot.py           # Bot interattivo con comandi
+└── test_service.py              # Suite di test completa
+```
+
+### Tecnologie Utilizzate
+- **Python 3.14+** con virtual environment
+- **pyTelegramBotAPI** per interazione con Telegram Bot API
+- **psycopg2** per connessione diretta a PostgreSQL
+- **python-dotenv** per gestione variabili d'ambiente
+
+### Workflow del Sistema
+
+#### 🔧 Esecuzione Manuale
+1. **Rapporto Completo**:
+   ```bash
+   python jobs/daily_report.py
+   ```
+   - Query su `tab_misuratori` e `tab_statistiche_misuratori`
+   - Generazione tabella con stato, ultimo dato, medie 24h/7d
+   - Invio formattato su gruppo Telegram
+
+2. **Controllo Dispositivi Offline**:
+   ```bash
+   python jobs/check_stale.py
+   ```
+   - Verifica timestamp `last_measurement` per ogni misuratore attivo
+   - Confronto con soglia configurabile (default: 24 ore)
+   - Sistema anti-spam: alert solo per nuovi problemi o recuperi
+   - Salvataggio stato in `alert_state.json`
+
+#### 🤖 Bot Interattivo
+```bash
+python interactive_bot.py
+```
+Bot attivo che risponde a comandi immediati per consulti on-demand.
+
+### Comandi Bot Disponibili
+
+| Comando | Descrizione |
+|---------|-------------|
+| `/status` | Rapporto completo di tutti i misuratori (equivalente al rapporto giornaliero) |
+| `/offline` | Lista solo misuratori offline con dettagli ultima connessione |
+| `/online` | Lista solo misuratori online con medie flusso |
+| `/stats [nome]` | Dettagli completi di un misuratore specifico |
+| `/time` | Data/ora corrente del sistema |
+| `/chatid` | ID della chat corrente (utile per configurazione) |
+| `/help` | Lista di tutti i comandi disponibili |
+
+### Configurazione Timing e Soglie
+
+#### ⚠️ Soglie Timeout
+- **Soglia dispositivi offline**: `.env` → `TELEGRAM_STALE_THRESHOLD_HOURS=24`
+- **Timezone**: `config/settings.py` → `LOCAL_TZ = ZoneInfo("Europe/Rome")`
+
+#### 📧 Configurazione Telegram
+Variabili richieste in `.env`:
+```env
+TOKEN_TELEGRAM_BOT=your_bot_token_here
+TELEGRAM_CHAT_ID=-1234567890
+TELEGRAM_STALE_THRESHOLD_HOURS=24
+```
+
+### Utilizzo e Testing
+
+#### 🧪 Test Completo del Sistema
+```bash
+cd notifications_service
+python test_service.py
+```
+
+#### 📊 Esecuzione Manuale Job
+```bash
+# Rapporto completo stato misuratori
+python jobs/daily_report.py
+
+# Controllo dispositivi offline
+python jobs/check_stale.py
+```
+
+#### 🤖 Avvio Bot Interattivo
+```bash
+# Bot attivo per comandi on-demand
+python interactive_bot.py
+```
+
+### Monitoring e Log
+- **Log rapporti**: `daily_report.log`
+- **Log controlli**: `stale_check.log`  
+- **Stato alert**: `alert_state.json`
+- **Test sistema**: `python test_service.py`
+
+### Resilienza e Affidabilità
+- **Servizio autonomo**: Funziona indipendentemente da portale web e db_manager
+- **Sistema anti-spam**: Evita notifiche ripetitive per stessi problemi
+- **Retry automatico**: Gestione errori di rete Telegram con backoff
+- **Chunking messaggi**: Supporto messaggi lunghi con divisione automatica
+- **Gestione errori**: Alert automatici per problemi di sistema via Telegram
+- **Esecuzione on-demand**: Job eseguibili manualmente per testing e verifica
+
+---
