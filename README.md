@@ -294,28 +294,48 @@ notifications_service/
 - **pyTelegramBotAPI** per interazione con Telegram Bot API
 - **psycopg2** per connessione diretta a PostgreSQL
 - **python-dotenv** per gestione variabili d'ambiente
+- **schedule** per job periodici automatici
 
 ### Workflow del Sistema
 
-#### 🔧 Esecuzione Manuale
+#### 🚀 Sistema Integrato (RACCOMANDATO)
+```bash
+python interactive_bot.py
+```
+**Servizio unificato** che combina:
+- **Job automatici**: Rapporti giornalieri e controlli offline schedulati
+- **Bot interattivo**: Comandi on-demand per consulti immediati
+- **Configurazione unificata**: Timing configurabile via variabili d'ambiente
+
+**Job automatici integrati:**
+- **Rapporto giornaliero**: Alle ore configurate (default: 08:30)
+- **Controllo offline**: Ogni X minuti configurabili (default: 30 min)
+- **Notifiche recovery**: Immediate quando dispositivi tornano online
+- **Sistema anti-spam**: Alert solo per nuovi problemi, stato salvato in `alert_state.json`
+
+#### ⚙️ Configurazione Scheduler
+Variabili opzionali in `.env`:
+```env
+SCHEDULER_DAILY_REPORT_TIME=08:30        # Orario rapporto giornaliero (HH:MM)
+SCHEDULER_STALE_CHECK_MINUTES=30         # Intervallo controllo offline (minuti)
+SCHEDULER_CHECK_SECONDS=60               # Frequenza controllo scheduler (secondi)
+```
+
+#### 🔧 Esecuzione Manuale (ALTERNATIVA)
+Per test o esecuzioni singole:
+
 1. **Rapporto Completo**:
    ```bash
    python jobs/daily_report.py
    ```
-   - Query su `tab_misuratori` e `tab_statistiche_misuratori`
-   - Generazione tabella con stato, ultimo dato, medie 24h/7d
-   - Invio formattato su gruppo Telegram
 
 2. **Controllo Dispositivi Offline**:
    ```bash
    python jobs/check_stale.py
    ```
-   - Verifica timestamp `last_measurement` per ogni misuratore attivo
-   - Confronto con soglia configurabile (default: 24 ore)
-   - Sistema anti-spam: alert solo per nuovi problemi o recuperi
-   - Salvataggio stato in `alert_state.json`
 
-#### 🤖 Bot Interattivo
+#### 🤖 Solo Bot Interattivo
+Per avere solo comandi senza job automatici, modificare `interactive_bot.py` commentando la sezione scheduler.
 ```bash
 python interactive_bot.py
 ```
@@ -328,6 +348,7 @@ Bot attivo che risponde a comandi immediati per consulti on-demand.
 | `/status` | Rapporto completo di tutti i misuratori (equivalente al rapporto giornaliero) |
 | `/offline` | Lista solo misuratori offline con dettagli ultima connessione |
 | `/online` | Lista solo misuratori online con medie flusso |
+| `/list` | Lista completa di tutti i misuratori nel database (ID + Nome) |
 | `/stats [nome]` | Dettagli completi di un misuratore specifico |
 | `/time` | Data/ora corrente del sistema |
 | `/chatid` | ID della chat corrente (utile per configurazione) |
@@ -349,32 +370,77 @@ TELEGRAM_STALE_THRESHOLD_HOURS=24
 
 ### Utilizzo e Testing
 
+#### 🚀 Avvio Produzione
+```bash
+cd notifications_service
+python interactive_bot.py
+```
+**Sistema completo attivo con:**
+- Job automatici schedulati
+- Bot interattivo per comandi on-demand
+- Logging completo su console e file
+
 #### 🧪 Test Completo del Sistema
 ```bash
 cd notifications_service
 python test_service.py
 ```
 
-#### 📊 Esecuzione Manuale Job
+#### 📊 Esecuzione Manuale Job (per test)
 ```bash
-# Rapporto completo stato misuratori
+# Rapporto completo stato misuratori (singolo)
 python jobs/daily_report.py
 
-# Controllo dispositivi offline
+# Controllo dispositivi offline (singolo)
 python jobs/check_stale.py
 ```
 
-#### 🤖 Avvio Bot Interattivo
+#### 🤖 Avvio Sistema Completo (RACCOMANDATO)
 ```bash
+# Sistema integrato: Bot + Job automatici
+python interactive_bot.py
+```
+All'avvio vedrai:
+- ✅ Scheduler avviato con job programmati
+- 📅 Timing configurato (rapporto giornaliero + controlli offline)
+- 🤖 Bot attivo per comandi immediati
+- Log dettagliato di tutte le operazioni
 # Bot attivo per comandi on-demand
 python interactive_bot.py
 ```
 
 ### Monitoring e Log
-- **Log rapporti**: `daily_report.log`
-- **Log controlli**: `stale_check.log`  
-- **Stato alert**: `alert_state.json`
-- **Test sistema**: `python test_service.py`
+
+#### 🔍 Log Sistema Integrato
+- **Console log**: Output real-time di tutte le operazioni
+- **Scheduler log**: Job automatici con timing e risultati
+- **Bot log**: Comandi utente e risposte del bot
+- **Error log**: Errori dettagliati con stack trace
+
+#### 📁 File di Stato
+- **Stato alert**: `alert_state.json` - Dispositivi offline tracciati per anti-spam
+- **Log rapporti manuali**: `daily_report.log` - Solo per esecuzioni singole
+- **Log controlli manuali**: `stale_check.log` - Solo per esecuzioni singole
+
+#### 🧪 Diagnostica
+```bash
+# Test completo connettività e funzionalità
+python test_service.py
+
+# Verifica configurazione
+python -c "from config.settings import *; print('Config OK')"
+```
+
+#### 📊 Esempio Output Sistema Integrato
+```
+🤖 Avvio Hydra Bot con scheduler integrato...
+📅 Job programmati:
+  - Rapporto giornaliero: 08:30
+  - Controllo offline: ogni 30 minuti
+✅ Scheduler avviato
+🔍 Controllo dispositivi offline automatico
+📊 Esecuzione rapporto giornaliero automatico
+```
 
 ### Resilienza e Affidabilità
 - **Servizio autonomo**: Funziona indipendentemente da portale web e db_manager

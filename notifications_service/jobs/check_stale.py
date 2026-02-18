@@ -114,20 +114,21 @@ def main():
             else:
                 logger.error("❌ Errore invio alert stale")
         
-        # Invia notifica di recupero (opzionale, solo se molti)
-        if len(recovered_devices) >= 3:  # Solo se si sono ripresi almeno 3
+        # Invia notifica di recupero per qualsiasi misuratore che torna online
+        if recovered_devices:
             logger.info(f"Invio notifica recupero per {len(recovered_devices)} misuratori")
             recovery_message = f"""✅ *RECUPERO MISURATORI*
 
-🟢 {len(recovered_devices)} misuratori sono tornati online:
+🟢 {len(recovered_devices)} misuratore{'i' if len(recovered_devices) > 1 else ''} tornat{'i' if len(recovered_devices) > 1 else 'o'} online:
+
 """
-            for device in recovered_devices[:5]:
-                recovery_message += f"• {device['name']}\\n"
+            for device in recovered_devices[:10]:  # Mostra fino a 10 dispositivi
+                recovery_message += f"• *{device['name']}* ({device['location']})\n"
             
-            if len(recovered_devices) > 5:
-                recovery_message += f"• ... e altri {len(recovered_devices) - 5}\\n"
+            if len(recovered_devices) > 10:
+                recovery_message += f"• ... e altri {len(recovered_devices) - 10}\n"
             
-            recovery_message += f"\\n⏱️ {datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M')}\\n#Hydra #Recupero"
+            recovery_message += f"\n⏱{datetime.now(LOCAL_TZ).strftime('%d/%m/%Y %H:%M')}\n#Hydra #Recupero"
             
             telegram_service.send_message(recovery_message)
         

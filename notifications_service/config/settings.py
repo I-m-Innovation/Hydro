@@ -41,3 +41,14 @@ class NotificationConfig:
     MAX_MESSAGE_LENGTH = 3500
     ENABLE_STALE_ALERTS = True
     ENABLE_DAILY_REPORTS = True
+
+# Configurazione Scheduler
+class SchedulerConfig:
+    # Rapporto giornaliero
+    DAILY_REPORT_TIME = os.getenv("SCHEDULER_DAILY_REPORT_TIME", "08:30")
+    
+    # Controllo dispositivi offline (minuti)
+    STALE_CHECK_INTERVAL = int(os.getenv("SCHEDULER_STALE_CHECK_MINUTES", "30"))
+    
+    # Controllo scheduler (secondi)
+    SCHEDULER_CHECK_INTERVAL = int(os.getenv("SCHEDULER_CHECK_SECONDS", "60"))

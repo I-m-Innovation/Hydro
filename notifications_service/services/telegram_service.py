@@ -100,8 +100,8 @@ class TelegramService:
 
 *STATO TUTTI I MISURATORI:*
 ```
-St Nome              Ultimo dato     24h    7d   
-── ──────────────── ─────────────── ────── ──────"""
+St Nome              Ultimo dato          Avg 24h L/s     Avg 7d L/s
+── ──────────────── ───────────────── ─────────────── ──────────────"""
         
         # Lista di tutti i misuratori con il loro stato in formato tabellare
         for row in stats_data:
@@ -129,12 +129,12 @@ St Nome              Ultimo dato     24h    7d
             else:
                 last_str = "Mai"
             
-            # Formatta le medie più corte
+            # Formatta le medie senza L/s (è nell'header)
             avg_24h_str = f"{avg_24h:.1f}" if avg_24h is not None else "N/A"
             avg_7d_str = f"{avg_7d:.1f}" if avg_7d is not None else "N/A"
             
-            # Allineamento delle colonne
-            header += f"\n{status_emoji} {display_name:<17} {last_str:<15} {avg_24h_str:<6} {avg_7d_str:<6}"
+            # Allineamento con header: Nome(17) + UltimoDato(17) + Avg24h(15 destra) + Avg7d(12 destra)
+            header += f"\n{status_emoji} {display_name:<17} {last_str:<17} {avg_24h_str:>13} {avg_7d_str:>14}"
         
         header += "\n```"
         
@@ -236,6 +236,7 @@ Nome              Ultimo dato      Offline da
         return dt_obj.astimezone(LOCAL_TZ).strftime("%d/%m/%Y %H:%M")
     
     def _days_since(self, dt) -> str:
+        
         """Calcola giorni trascorsi da un datetime"""
         if dt is None:
             return "∞"
@@ -253,3 +254,8 @@ Nome              Ultimo dato      Offline da
             return f"{hours}h "
         else:
             return "< 1h "
+
+    
+
+
+

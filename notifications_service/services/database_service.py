@@ -72,6 +72,8 @@ class DatabaseService:
             conn.close()
     
     def fetch_active_misuratori_count(self) -> Tuple[Optional[int], Optional[str]]:
+        
+        
         """Conta i misuratori attivi"""
         conn = self.connect()
         if not conn:
@@ -90,3 +92,36 @@ class DatabaseService:
             return None, error_msg
         finally:
             conn.close()
+            
+    def fetch_misuratori_list(self, limit: int = 100) -> Tuple[Optional[List], Optional[str]]:
+        """
+        Recupera la lista di tutti i misuratori
+        Ritorna: (righe, errore)
+        """
+        conn = self.connect()
+        if not conn:
+            return None, "Connessione al database fallita"
+        
+        try:
+            with conn.cursor() as cur:
+                cur.execute(
+                    f"""
+                    SELECT id_misuratore, name
+                    FROM {self.config.SCHEMA}.tab_misuratori
+                    ORDER BY name ASC
+                    LIMIT %s
+                    """,
+                    (limit,)
+                )
+                rows = cur.fetchall()
+                logger.info(f"Recuperati {len(rows)} misuratori")
+                return rows, None
+        except Exception as e:
+            error_msg = f"Errore query misuratori: {e}"
+            logger.error(error_msg)
+            return None, error_msg
+        finally:
+            conn.close()
+            
+            
+    
