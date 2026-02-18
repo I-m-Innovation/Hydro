@@ -31,6 +31,55 @@ bot = telebot.TeleBot(TelegramConfig.BOT_TOKEN)
 db_service = DatabaseService()
 telegram_service = TelegramService()
 
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome_new_members(message):
+    """Messaggio di benvenuto per nuovi membri del gruppo"""
+    try:
+        for new_member in message.new_chat_members:
+            if new_member.is_bot:
+                continue  # Ignora altri bot
+            
+            username = new_member.first_name or new_member.username or "Nuovo utente"
+            
+            welcome_message = f"""```
+    ╔═══════════════════════════════════════╗
+    ║           🏗️ HYDRA 3.0 BOT            ║
+    ║      Sistema Monitoraggio Idrometrico ║
+    ╚═══════════════════════════════════════╝
+```
+
+👋 **Benvenuto {username}!**
+
+Sono il bot di monitoraggio per il sistema Hydra 3.0.
+Fornisco rapporti automatici e comandi on-demand per il controllo dei misuratori idrometrici.
+
+**JOB AUTOMATICI ATTIVI:**
+• Rapporto giornaliero: `{SchedulerConfig.DAILY_REPORT_TIME}`
+• Controllo offline: ogni `{SchedulerConfig.STALE_CHECK_INTERVAL}` minuti  
+• Notifiche recovery: immediate quando dispositivi tornano online
+
+**COMANDI PRINCIPALI:**
+• `/status` - Rapporto completo tutti i misuratori
+• `/offline` - Solo misuratori offline con dettagli
+• `/online` - Solo misuratori online con medie flusso  
+• `/list` - Lista completa ID e nomi misuratori
+• `/stats [nome]` - Dettagli specifici misuratore
+• `/help` - Lista completa comandi
+
+**SISTEMA SEMPRE ATTIVO:**
+✅ Monitoraggio automatico 24/7
+✅ Notifiche immediate per problemi
+
+Usa `/help` per vedere tutti i comandi disponibili.
+
+"""
+
+            bot.send_message(message.chat.id, welcome_message, parse_mode='Markdown')
+            logger.info(f"Messaggio di benvenuto inviato a {username}")
+    
+    except Exception as e:
+        logger.error(f"Errore invio messaggio benvenuto: {e}")
+
 @bot.message_handler(commands=['start', 'help'])
 def send_help(message):
     """Mostra i comandi disponibili"""
