@@ -266,3 +266,188 @@ Se il sito funziona sul PC server ma non è raggiungibile da altri PC:
 - **Profilo rete**: Imposta come "Privato" in Windows
 - **Firewall**: Regola in ingresso TCP port 8000 per profilo Privato
 - **Test connettività**: `Test-NetConnection <IP> -Port 8000` dal client
+
+---
+
+## 🤖 Servizio notifications_service (Sistema Notifiche Telegram)
+
+### Panoramica
+**notifications_service** è un servizio autonomo per il monitoraggio e alerting automatico tramite Telegram Bot. Opera indipendentemente dal portale web e dal db_manager, garantendo continuità delle notifiche anche in caso di malfunzionamenti degli altri servizi.
+
+### Architettura
+```
+notifications_service/
+├── config/
+│   └── settings.py              # Configurazioni DB, Telegram, timezone
+├── services/
+│   ├── database_service.py      # Connessione PostgreSQL e query
+│   └── telegram_service.py      # Gestione messaggi e formattazione
+├── jobs/                        # Script per esecuzione manuale
+│   ├── daily_report.py          # Rapporto completo misuratori
+│   └── check_stale.py           # Controllo dispositivi offline
+├── interactive_bot.py           # Bot interattivo con comandi
+└── test_service.py              # Suite di test completa
+```
+
+### Tecnologie Utilizzate
+- **Python 3.14+** con virtual environment
+- **pyTelegramBotAPI** per interazione con Telegram Bot API
+- **psycopg2** per connessione diretta a PostgreSQL
+- **python-dotenv** per gestione variabili d'ambiente
+- **schedule** per job periodici automatici
+
+### Workflow del Sistema
+
+#### 🚀 Sistema Integrato (RACCOMANDATO)
+```bash
+python interactive_bot.py
+```
+**Servizio unificato** che combina:
+- **Job automatici**: Rapporti giornalieri e controlli offline schedulati
+- **Bot interattivo**: Comandi on-demand per consulti immediati
+- **Configurazione unificata**: Timing configurabile via variabili d'ambiente
+
+**Job automatici integrati:**
+- **Rapporto giornaliero**: Alle ore configurate (default: 08:30)
+- **Controllo offline**: Ogni X minuti configurabili (default: 30 min)
+- **Notifiche recovery**: Immediate quando dispositivi tornano online
+- **Sistema anti-spam**: Alert solo per nuovi problemi, stato salvato in `alert_state.json`
+
+#### ⚙️ Configurazione Scheduler
+Variabili opzionali in `.env`:
+```env
+SCHEDULER_DAILY_REPORT_TIME=08:30        # Orario rapporto giornaliero (HH:MM)
+SCHEDULER_STALE_CHECK_MINUTES=30         # Intervallo controllo offline (minuti)
+SCHEDULER_CHECK_SECONDS=60               # Frequenza controllo scheduler (secondi)
+```
+
+#### 🔧 Esecuzione Manuale (ALTERNATIVA)
+Per test o esecuzioni singole:
+
+1. **Rapporto Completo**:
+   ```bash
+   python jobs/daily_report.py
+   ```
+
+2. **Controllo Dispositivi Offline**:
+   ```bash
+   python jobs/check_stale.py
+   ```
+
+#### 🤖 Solo Bot Interattivo
+Per avere solo comandi senza job automatici, modificare `interactive_bot.py` commentando la sezione scheduler.
+```bash
+python interactive_bot.py
+```
+Bot attivo che risponde a comandi immediati per consulti on-demand.
+
+### Comandi Bot Disponibili
+
+| Comando | Descrizione |
+|---------|-------------|
+| `/status` | Rapporto completo di tutti i misuratori (equivalente al rapporto giornaliero) |
+| `/offline` | Lista solo misuratori offline con dettagli ultima connessione |
+| `/online` | Lista solo misuratori online con medie flusso |
+| `/list` | Lista completa di tutti i misuratori nel database (ID + Nome) |
+| `/stats [nome]` | Dettagli completi di un misuratore specifico |
+| `/time` | Data/ora corrente del sistema |
+| `/chatid` | ID della chat corrente (utile per configurazione) |
+| `/help` | Lista di tutti i comandi disponibili |
+
+### Configurazione Timing e Soglie
+
+#### ⚠️ Soglie Timeout
+- **Soglia dispositivi offline**: `.env` → `TELEGRAM_STALE_THRESHOLD_HOURS=24`
+- **Timezone**: `config/settings.py` → `LOCAL_TZ = ZoneInfo("Europe/Rome")`
+
+#### 📧 Configurazione Telegram
+Variabili richieste in `.env`:
+```env
+TOKEN_TELEGRAM_BOT=your_bot_token_here
+TELEGRAM_CHAT_ID=-1234567890
+TELEGRAM_STALE_THRESHOLD_HOURS=24
+```
+
+### Utilizzo e Testing
+
+#### 🚀 Avvio Produzione
+```bash
+cd notifications_service
+python interactive_bot.py
+```
+**Sistema completo attivo con:**
+- Job automatici schedulati
+- Bot interattivo per comandi on-demand
+- Logging completo su console e file
+
+#### 🧪 Test Completo del Sistema
+```bash
+cd notifications_service
+python test_service.py
+```
+
+#### 📊 Esecuzione Manuale Job (per test)
+```bash
+# Rapporto completo stato misuratori (singolo)
+python jobs/daily_report.py
+
+# Controllo dispositivi offline (singolo)
+python jobs/check_stale.py
+```
+
+#### 🤖 Avvio Sistema Completo (RACCOMANDATO)
+```bash
+# Sistema integrato: Bot + Job automatici
+python interactive_bot.py
+```
+All'avvio vedrai:
+- ✅ Scheduler avviato con job programmati
+- 📅 Timing configurato (rapporto giornaliero + controlli offline)
+- 🤖 Bot attivo per comandi immediati
+- Log dettagliato di tutte le operazioni
+# Bot attivo per comandi on-demand
+python interactive_bot.py
+```
+
+### Monitoring e Log
+
+#### 🔍 Log Sistema Integrato
+- **Console log**: Output real-time di tutte le operazioni
+- **Scheduler log**: Job automatici con timing e risultati
+- **Bot log**: Comandi utente e risposte del bot
+- **Error log**: Errori dettagliati con stack trace
+
+#### 📁 File di Stato
+- **Stato alert**: `alert_state.json` - Dispositivi offline tracciati per anti-spam
+- **Log rapporti manuali**: `daily_report.log` - Solo per esecuzioni singole
+- **Log controlli manuali**: `stale_check.log` - Solo per esecuzioni singole
+
+#### 🧪 Diagnostica
+```bash
+# Test completo connettività e funzionalità
+python test_service.py
+
+# Verifica configurazione
+python -c "from config.settings import *; print('Config OK')"
+```
+
+#### 📊 Esempio Output Sistema Integrato
+```
+🤖 Avvio Hydra Bot con scheduler integrato...
+📅 Job programmati:
+  - Rapporto giornaliero: 08:30
+  - Controllo offline: ogni 30 minuti
+✅ Scheduler avviato
+🔍 Controllo dispositivi offline automatico
+📊 Esecuzione rapporto giornaliero automatico
+```
+
+### Resilienza e Affidabilità
+- **Servizio autonomo**: Funziona indipendentemente da portale web e db_manager
+- **Sistema anti-spam**: Evita notifiche ripetitive per stessi problemi
+- **Retry automatico**: Gestione errori di rete Telegram con backoff
+- **Chunking messaggi**: Supporto messaggi lunghi con divisione automatica
+- **Gestione errori**: Alert automatici per problemi di sistema via Telegram
+- **Esecuzione on-demand**: Job eseguibili manualmente per testing e verifica
+
+---
