@@ -31,6 +31,98 @@ bot = telebot.TeleBot(TelegramConfig.BOT_TOKEN)
 db_service = DatabaseService()
 telegram_service = TelegramService()
 
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome_new_members(message):
+    """Messaggio di benvenuto per nuovi membri del gruppo"""
+    try:
+        for new_member in message.new_chat_members:
+            if new_member.is_bot:
+                continue  # Ignora altri bot
+            
+            username = new_member.first_name or new_member.username or "Nuovo utente"
+            
+            welcome_message = f"""```
+╔══════════════════════════════════════════════════════════════╗
+║                    🏗️ **HYDRA 3.0 BOT**                     ║
+║                *Sistema Monitoraggio Idrometrico*            ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+👋 **Benvenuto {username}!**
+
+Sono il bot di monitoraggio per il sistema Hydra 3.0.
+Fornisco rapporti automatici e comandi on-demand per il controllo dei misuratori idrometrici.
+
+**JOB AUTOMATICI ATTIVI:**
+• Rapporto giornaliero: `{SchedulerConfig.DAILY_REPORT_TIME}`
+• Controllo offline: ogni `{SchedulerConfig.STALE_CHECK_INTERVAL}` minuti  
+• Notifiche recovery: immediate quando dispositivi tornano online
+
+**COMANDI PRINCIPALI:**
+• `/status` - Rapporto completo tutti i misuratori
+• `/offline` - Solo misuratori offline con dettagli
+• `/online` - Solo misuratori online con medie flusso  
+• `/list` - Lista completa ID e nomi misuratori
+• `/stats [nome]` - Dettagli specifici misuratore
+• `/help` - Lista completa comandi
+
+**SISTEMA SEMPRE ATTIVO:**
+✅ Monitoraggio automatico 24/7
+✅ Notifiche immediate per problemi
+
+Usa `/help` per vedere tutti i comandi disponibili.
+
+"""
+
+            bot.send_message(message.chat.id, welcome_message, parse_mode='Markdown')
+            logger.info(f"Messaggio di benvenuto inviato a {username}")
+    
+    except Exception as e:
+        logger.error(f"Errore invio messaggio benvenuto: {e}")
+
+@bot.message_handler(commands=['testwelcome'])
+def test_welcome_message(message):
+    """COMANDO TEMPORANEO - Test messaggio di benvenuto"""
+    try:
+        username = message.from_user.first_name or message.from_user.username or "Test User"
+        
+        welcome_message = f"""```
+╔══════════════════════════════════════════════════════════════╗
+║                        HYDRA 3.0 BOT                         ║
+║                 Sistema Monitoraggio Idrometrico             ║
+╚══════════════════════════════════════════════════════════════╝
+
+```
+
+👋 **Benvenuto {username}!**
+
+Sono il bot di monitoraggio per il sistema Hydra 3.0.
+Fornisco rapporti automatici e comandi on-demand per il controllo dei misuratori idrometrici.
+
+**JOB AUTOMATICI ATTIVI:**
+• Rapporto giornaliero: `{SchedulerConfig.DAILY_REPORT_TIME}`
+• Controllo offline: ogni `{SchedulerConfig.STALE_CHECK_INTERVAL}` minuti  
+• Notifiche recovery: immediate quando dispositivi tornano online
+
+**COMANDI PRINCIPALI:**
+• `/status` - Rapporto completo tutti i misuratori
+• `/offline` - Solo misuratori offline con dettagli
+• `/online` - Solo misuratori online con medie flusso  
+• `/list` - Lista completa ID e nomi misuratori
+• `/stats [nome]` - Dettagli specifico misuratore
+• `/help` - Lista completa comandi
+
+Usa `/help` per vedere tutti i comandi disponibili.
+
+_Questo è un messaggio di test - usa /testwelcome per rivederlo_"""
+
+        bot.reply_to(message, welcome_message, parse_mode='Markdown')
+        logger.info(f"Messaggio di benvenuto test inviato a {username}")
+    
+    except Exception as e:
+        logger.error(f"Errore test messaggio benvenuto: {e}")
+        bot.reply_to(message, f"❌ Errore test benvenuto: {str(e)}")
+
 @bot.message_handler(commands=['start', 'help'])
 def send_help(message):
     """Mostra i comandi disponibili"""
@@ -43,6 +135,8 @@ def send_help(message):
 /time - Data/ora sistema
 /chatid - ID di questa chat
 /list - Lista di tutti i misuratori nel database
+/portale - Link al portale web Hydra
+/testwelcome - [TEST] Mostra messaggio benvenuto
 /help - Questo messaggio
 
 
@@ -284,6 +378,7 @@ Nome: {getattr(message.chat, 'title', getattr(message.chat, 'first_name', 'N/A')
 Per .env: TELEGRAM_CHAT_ID={message.chat.id}"""
     
     bot.reply_to(message, chat_info, parse_mode='Markdown')
+
 @bot.message_handler(commands=['list'])
 def cmd_list(message):
     """comando per restituire la lista di misuratori presenti nel database"""
@@ -316,7 +411,23 @@ def cmd_list(message):
     except Exception as e:
         logger.error(f"Errore comando list: {e}")
         bot.reply_to(message, f"❌ Errore: {str(e)}")
-    
+
+@bot.message_handler(commands=['portale'])
+def cmd_portale(message):
+    """Mostra il link al portale web Hydra"""
+    try:
+        portale_info = f"""
+        🌐 *PORTALE WEB HYDRA*
+ **Link diretto:**
+http://192.168.10.229:9984/portale/home/
+"""
+        
+        bot.reply_to(message, portale_info, parse_mode='Markdown')
+        logger.info(f"Link portale inviato a {message.from_user.first_name or message.from_user.username}")
+    except Exception as e:
+        logger.error(f"Errore comando portale: {e}")
+        bot.reply_to(message, f"❌ Errore: {str(e)}")
+
 @bot.message_handler(func=lambda message: True)
 def handle_unknown(message):
     """Gestisce messaggi non riconosciuti"""
