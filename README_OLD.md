@@ -1,0 +1,405 @@
+# 🏗️ Hydra 3.0 - Sistema di Monitoraggio Idrometrico
+
+##  Panoramica del Progetto
+
+**Hydra 3.0** è una piattaforma di monitoraggio real-time per misurazioni idrologiche che combina:
+- **ETL Pipeline** real-time da Azure EventHub 
+- **Dashboard Web** Django con visualizzazioni avanzate
+- **Processamento Statistico** (filtro Hampel per outlier detection)
+- **Analytics** con curve di durata e istogrammi di flusso
+
+---
+
+##  Architettura Database
+
+![Database Schema](docs/images/Database_Hydro_Diagram.jpeg)
+
+*Schema delle tabelle principali del sistema Hydra 3.0 con relazioni e materialized views*
+
+---
+
+## 📊 Valutazione Tecnica del Progetto
+
+### ✅ **Architettura Generale - BUONA**
+- **Separazione microservizi**: `db_manager` (ETL) e `portale_hydro_3_0` (Web) ben distinti
+- **Pipeline 5-stage**: Raw → Transform → Clean → Statistics → Analytics  
+- **Real-time processing**: Intervalli configurabili da 20s a 24h
+- **Schema PostgreSQL** ben strutturato con materialized views per performance
+
+### ✅ **Qualità del Codice - MOLTO BUONA**
+- **Input validation** robusta con test coverage
+- **SQL injection protection** via parameterized queries
+- **Processamento statistico** scientificamente corretto (Hampel filter)
+- **Frontend moderno** con Chart.js e UX patterns solidi
+
+### ✅ **Adeguatezza per Uso Interno - OTTIMALE**
+**Per 3-4 utenti aziendali occasionali**: **9/10** 🎉
+- Architettura **over-engineered in modo positivo** 
+- Qualità **enterprise-grade** per esigenze interne
+- Performance più che sufficienti per il carico target
+- Manutenibilità eccellente
+
+---
+
+## 🚨 Items da Completare
+
+### **🔒 P0 - Sicurezza Base (5 minuti)**
+- [ ] **Rimuovere credenziali hardcoded** in `db_manager/jobs/regenerate_clean_measurements_single.py`
+- [ ] **Aggiungere variabili ambiente** per credenziali database
+
+### **⚠️ P1 - Operatività (opzionale per uso interno)**  
+- [ ] **Script restart automatico** per db_manager (risolve memory leak via cron)
+- [ ] **Basic health check** endpoint per monitoraggio uptime
+- [ ] **Log rotation** automatica per logs applicativi
+
+### **🌟 P2 - Ignorabili per Uso Interno**
+- ❌ Connection pooling (non necessario per 3-4 utenti)
+- ❌ Rate limiting (superfluo con pochi utenti)
+- ❌ Horizontal scaling (single-machine deployment OK)
+- ❌ Advanced monitoring (nice-to-have ma non critico)
+
+---
+
+## 🚀 Status Deploy
+
+**PRONTO PER PRODUZIONE** per ambiente aziendale interno con minimal fixing:
+- Deploy **single-machine** (VM o physical)
+- PostgreSQL locale (no cluster needed) 
+- Nginx reverse proxy semplice
+- Systemd services per gestione processi
+
+---
+
+## 🔌 Disattivare / Riattivare CI/CD (Azure + GitHub)
+
+Se il deploy automatico parte quando fai push su `release`, per fermarlo (e poi riattivarlo) usa questi passi.
+
+### 1) Azure App Service (Deployment Center)
+**Disattivare**
+- Azure Portal → App Service → **Deployment Center**
+- Tab **Settings** → **Disconnect**
+
+**Riattivare**
+- Azure Portal → App Service → **Deployment Center**
+- **Connect** e scegli la sorgente (GitHub) e il branch `release`
+
+### 2) GitHub Actions (workflow di deploy)
+**Disattivare**
+- GitHub repo → tab **Actions**
+- Seleziona il workflow di deploy → menu (⋮) → **Disable workflow**
+
+**Riattivare**
+- GitHub repo → tab **Actions**
+- Seleziona il workflow di deploy → **Enable workflow**
+
+---
+
+## Ultimo update - 12/02/2026
+
+### Backend - Ottimizzazioni performance e LED status
+- `measurements_api` e `duration_curve_api`: fetch in chunk (no `fetchall`) per ridurre OOM.
+- Nuova MV `hydro.mv_led_status` con `id_misuratore`, `name`, `latest_measurement`.
+- Script SQL:
+  - `db_manager/scripts/ensure_mv_led_status.sql`
+  - `db_manager/scripts/refresh_mv_led_status.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_led_status.py`.
+- Scheduler refresh MV in `db_manager/run.py` + intervallo in `db_manager/config/settings.py` (`SECONDS_BETWEEN_REFRESH_LED_STATUS`).
+- Endpoint `led_status_api` ora legge da MV (`portale_hydro_3_0/portale/views.py`).
+
+### Curva di durata - Nuova MV RAW vs SMOOTHED (2 decimali)
+- Creata MV `hydro.mv_flow_exceedance_raw_vs_smoothed_2d` per curva di durata con valori arrotondati a 2 decimali.
+- La MV include: `flow_2d`, `p_exceed_raw`, `p_exceed_smoothed`, `cnt_raw`, `cnt_smoothed`.
+- Nuovo job refresh MV: `db_manager/jobs/refresh_mv_flow_exceedance_raw_vs_smoothed_2d.py`.
+- Script SQL refresh: `db_manager/scripts/refresh_mv_flow_exceedance_raw_vs_smoothed_2d.sql`.
+- Scheduler notturno alle **04:00 Europe/Rome** in `db_manager/run.py`.
+- Parametri in `db_manager/config/settings.py`:
+  - `FLOW_EXCEEDANCE_MV_REFRESH_HOUR`
+  - `FLOW_EXCEEDANCE_MV_REFRESH_MINUTE`
+  - `FLOW_EXCEEDANCE_MV_REFRESH_TZ`
+- Endpoint `duration_curve_api` ora legge dalla nuova MV e restituisce:
+  - `exceedance_percent_raw` + `flow_ls_raw`
+  - `exceedance_percent_smoothed` + `flow_ls_smoothed`
+  - `exceedance_percent` (alias di smoothed per compatibilità)
+- Aggiunto header cache: `Cache-Control: public, max-age=72000` (20 ore).
+
+### Frontend - Curva di durata RAW vs SMOOTHED
+- `charts.js`: curva di durata ora visualizza **due linee** (raw e smoothed).
+- Ogni dataset usa il proprio asse X (`xSource` con exceedance percent dedicata).
+- La linea verticale all'80% usa il valore **raw**.
+
+### Curva di durata - MV oraria RAW (ora locale)
+- Creata MV `hydro.mv_flow_duration_curve_hourly_raw_local` con **medie orarie** (Europe/Rome) della portata RAW.
+- Script SQL:
+  - `db_manager/scripts/ensure_mv_flow_duration_curve_hourly_raw_local.sql`
+  - `db_manager/scripts/refresh_mv_flow_duration_curve_hourly_raw_local.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_flow_duration_curve_hourly_raw_local.py`.
+- Scheduler notturno alle **04:00 Europe/Rome** in `db_manager/run.py`.
+- Parametri in `db_manager/config/settings.py`:
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_HOUR`
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_MINUTE`
+  - `HOURLY_RAW_DURATION_CURVE_MV_REFRESH_TZ`
+- Endpoint `duration_curve_api` ora usa la MV oraria e restituisce:
+  - `exceedance_percent` + `flow_ls_raw` (media oraria RAW)
+- `charts.js`: la curva di durata mostra **una sola linea** (media oraria RAW).
+- **Decisione finale**: la curva di durata usa il **raggruppamento orario** (ora locale Europe/Rome).
+
+#### Template MV (raggruppamenti orari multipli)
+Di seguito un template SQL per costruire una MV con raggruppamento orario (es. 3h). Da usare come base per creare altre granularitÃ  orarie:
+
+```sql
+CREATE MATERIALIZED VIEW hydro.mv_flow_duration_curve_3h_raw_local AS
+WITH base AS (
+  SELECT
+    c.id_misuratore,
+    (c.data_misurazione AT TIME ZONE 'Europe/Rome') AS ts_local,
+    c.flow_ls_raw
+  FROM hydro.tab_measurements_clean c
+  WHERE c.flow_ls_raw IS NOT NULL
+),
+binned AS (
+  SELECT
+    id_misuratore,
+    date_bin(
+      INTERVAL '3 hours',
+      ts_local,
+      TIMESTAMP '2000-01-01 00:00:00'
+    ) AS bin_3h_local,
+    avg(flow_ls_raw)::double precision AS flow_avg_3h_raw
+  FROM base
+  GROUP BY
+    id_misuratore,
+    date_bin(INTERVAL '3 hours', ts_local, TIMESTAMP '2000-01-01 00:00:00')
+),
+ranked AS (
+  SELECT
+    b.id_misuratore,
+    b.bin_3h_local,
+    b.flow_avg_3h_raw,
+    SUM(1) OVER (
+      PARTITION BY b.id_misuratore
+      ORDER BY b.flow_avg_3h_raw DESC
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS cum_ge,
+    COUNT(*) OVER (PARTITION BY b.id_misuratore) AS total_n
+  FROM binned b
+)
+SELECT
+  id_misuratore,
+  bin_3h_local,
+  flow_avg_3h_raw,
+  (cum_ge::double precision / NULLIF(total_n, 0)::double precision) * 100.0 AS p_exceed
+FROM ranked;
+
+CREATE UNIQUE INDEX mv_flow_duration_curve_3h_raw_local_uq
+  ON hydro.mv_flow_duration_curve_3h_raw_local (id_misuratore, bin_3h_local);
+```
+
+Query di esempio per plottare la curva da pgAdmin:
+
+```sql
+SELECT
+  p_exceed        AS x_p_exceed,
+  flow_avg_3h_raw AS y_flow
+FROM hydro.mv_flow_duration_curve_3h_raw_local
+WHERE id_misuratore = 'Gateway 1'
+ORDER BY x_p_exceed ASC;
+```
+
+Note: per altre granularitÃ , cambia `INTERVAL '3 hours'` (es. `1 hours`, `6 hours`, `12 hours`) e rinomina coerentemente la MV e l'indice.
+
+### Frontend - LED e messaggi no-data
+- `led_status.js`: refresh manuale via `window.refreshLedStatus` e evento `led-status:refresh`.
+- `led_status.js`: backoff esponenziale sui retry quando LED resta grigio (riduce spam).
+- `charts.js`: il bottone "Aggiorna" dei grafici richiama anche il refresh LED.
+- `charts.js` + `style.css`: overlay centrato "No data retrieved" sopra il canvas quando API ritorna array vuoti.
+
+## Ultimo update - 11/02/2026
+
+### Backend - Materialized View per range lunghi
+- Creata MV `hydro.mv_flow_daily_avg` con medie giornaliere di `flow_ls_raw` e `flow_ls_smoothed`.
+- Aggiunti script SQL:
+  - `db_manager/scripts/ensure_mv_flow_daily_avg.sql`
+  - `db_manager/scripts/refresh_mv_flow_daily_avg.sql`
+- Job refresh MV: `db_manager/jobs/refresh_mv_flow_daily_avg.py`.
+- Scheduler notturno (02:00 Europe/Rome) configurato in `db_manager/run.py`.
+- Parametri schedulazione in `db_manager/config/settings.py`:
+  - `MV_FLOW_DAILY_AVG_REFRESH_HOUR`
+  - `MV_FLOW_DAILY_AVG_REFRESH_MINUTE`
+  - `MV_FLOW_DAILY_AVG_REFRESH_TZ`
+- Check MV aggiunto allo startup (`db_manager/db/schema.py` + `db_manager/run.py`).
+
+### Backend - Endpoint misure
+- `measurements_api` usa la MV per i range lunghi (`6m`, `1y`, `all`) e la tabella raw per (`24h`, `7d`, `1m`).
+- Aggiunti log diagnostici su source, righe e punti restituiti.
+- Rimossa logica di cutoff non utilizzata per `6m/1y` nel path raw.
+
+### DB Manager - Refresh curve di durata
+- Refresh MV `mv_flow_duration_curve_daily` spostato a schedulazione notturna (03:00 Europe/Rome).
+- Parametri in `db_manager/config/settings.py`:
+  - `DURATION_CURVE_MV_REFRESH_HOUR`
+  - `DURATION_CURVE_MV_REFRESH_MINUTE`
+  - `DURATION_CURVE_MV_REFRESH_TZ`
+- Rimossa la schedulazione ogni 20s (`SECONDS_BETWEEN_REFRESH_MV`).
+
+### Frontend - Affidabilità fetch e messaggi
+- `charts.js`: retry con backoff esponenziale sui fetch API; log errori quando l'API fallisce.
+- `charts.js`: se i dati sono vuoti, mostra messaggio "Nessun dato disponibile" senza azzerare le etichette.
+- `led_status.js`: retry con 3 tentativi aggiuntivi prima di impostare il LED su grigio.
+
+### Frontend - Info grafico portata
+- Aggiunto pulsante info nel grafico portata per spiegare che `6m/1y/all` mostrano medie giornaliere per ottimizzazione.
+
+## Ultimo update - 09/02/2026
+
+### Ottimizzazione Throttling EventHub
+- Aggiornato `MIN_SECONDS_BETWEEN_EVENTS` da 5 a 280 secondi (4 min 40s) in `db_manager/config/settings.py`.
+- **Motivo**: La sorgente EventHub invia già dati ogni 5 minuti, quindi il throttling a 5 secondi era inutilmente frequente.
+- **Benefici**: Riduzione carico CPU, meno lock contention, crescita più lenta dello stato in memoria.
+- **Sicurezza**: Mantiene 20 secondi di buffer rispetto alla frequenza naturale di 5 minuti.
+
+# Problemi principali ancora presenti (non affrontati) 29/01/2026
+
+- Gestione connessioni DB per evento: ad ogni evento apri/chiudi una nuova connessione. Su carichi continui può saturare il DB o creare latenza inutile. Serve un pool o una connessione riutilizzata. main_00.py
+- Retry minimo e senza backoff reale: hai solo 1 retry con sleep(1). Se il DB resta giù per più tempo, perdi eventi (return) e non fai checkpoint. main_00.py
+- Checkpoint solo dopo insert riuscito: se un evento fallisce l’insert, il checkpoint non viene aggiornato e quell’evento verrà riprocessato all’infinito (potenziale loop). main_00.py
+- Throttle per device con stato in RAM: LAST_EVENT_TS_BY_ID cresce senza limite se i device sono tanti e non ha scadenza. Con mesi di runtime può consumare RAM. main_00.py
+- Threading senza shutdown pulito: i consumer sono in thread daemon, quindi in stop forzato non hai garanzie su flush/checkpoint/close. main_00.py
+- Nessun controllo su payload invalido parziale: se values è dict ma contiene misure non conformi, salti semplicemente senza logging strutturato; è difficile capire quali device generano dati sporchi. main_00.py
+- OOM su endpoint `measurements_api`: uso di `list(rows)` materializza tutte le righe in RAM prima del downsampling. Su range grandi può mandare in out-of-memory. `portale_hydro_3_0/portale/views.py`
+- Se vuoi, posso affrontarli in ordine di impatto con cambi minimi (pool connessioni + retry/backoff + cleanup state).
+
+
+## Ultimo update - 30/01/2026
+
+### DB Manager
+- Aggiunta tabella `hydro.tab_flow_histogram` (schema “lungo”) con FK su `tab_misuratori`.
+- Job `refresh_flow_histogram` con SQL dedicato e scheduler in `run.py`.
+- Istogramma calcolato su **tutto lo storico** (`FLOW_HIST_WINDOW_HOURS = 0`).
+- Pianificazione istogramma: **1 volta al giorno** (`SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM = 86400`).
+- Endpoint Django per istogramma: `/portale/api/flow-histogram/?id_misuratore=...`.
+- Output API include `percent` oltre a `count`.
+
+### Frontend (charts)
+- Grafico istogramma collegato all’endpoint e visualizzato su “chart-fluid-velocity”.
+- Asse Y in percentuale con tick interi.
+- Tooltip con **range del bin**, **percentuale** e **numero punti**.
+- Asse X visibile con tick della portata.
+
+## Ultimo update - 02/02/2026
+
+### Frontend (status LED)
+- Aggiunto LED di stato vicino al titolo del misuratore in `portale_hydro_3_0/portale/templates/portale/includes/main.html`.
+- Stili LED con animazione pulse e classi stato (`status-green`, `status-orange`, `status-red`, `status-gray`) in `portale_hydro_3_0/portale/static/portale/css/style.css`.
+- Script `portale_hydro_3_0/portale/static/portale/js/led_status.js` con polling ogni 60s e log di debug.
+
+### Backend (status LED)
+- Nuovo endpoint `api/led-status/` che restituisce l'ultima misurazione per misuratore in `portale_hydro_3_0/portale/views.py` e `portale_hydro_3_0/portale/urls.py`.
+- Regole stato: >2h giallo, >6h rosso, assenza dati grigio, altrimenti verde.
+
+### Workflow LED (come diventa "attivo")
+- Il template renderizza il LED con `data-misuratore-id` per il misuratore corrente.
+- `led_status.js` fa polling ogni 60s su `/portale/api/led-status/`.
+- L'API ritorna `latest_measurement` per ogni misuratore (timestamp ISO).
+- Il JS calcola le ore trascorse dall'ultima misura e assegna la classe:
+  - `status-green` se <= 2h
+  - `status-orange` se > 2h
+  - `status-red` se > 6h
+  - `status-gray` se manca il dato o la data è invalida.
+
+### Decimazione dati (LTTB)
+- Il grafico `chart-flow-rate` usa la decimazione di Chart.js quando `useApi` è true, `type` è `line` e l'asse X è `linear`.
+- L'algoritmo LTTB (Largest Triangle Three Buckets) riduce i punti mantenendo la forma del segnale.
+- Funzionamento: mantiene primo/ultimo punto, divide i dati in bucket e per ogni bucket sceglie il punto che massimizza l'area del triangolo rispetto al punto scelto prima e alla media del bucket successivo.
+- Risultato: preserva trend e picchi più importanti rispetto a un semplice sampling uniforme.
+
+### Sistema di Visualizzazione Grafici (charts.js)
+
+#### Architettura Core
+- **File principale**: `portale_hydro_3_0/portale/static/portale/js/charts.js` (~1200 righe)
+- **Libreria**: Chart.js con plugin zoom e decimazione LTTB
+- **Gestione stato**: Map-based per istanze grafici e polling intervals
+- **Aggiornamento**: API polling ogni 60s solo per range 24h
+
+#### Tipologie di Grafici
+1. **Flow Rate (`chart-flow-rate`)**:
+   - Doppio dataset: raw e smoothed data
+   - Asse X temporale (timestamp in ms), Y portata (l/s)
+   - Decimazione automatica sopra 1250 punti
+   - Gap detection con interruzione linee e ombreggiatura
+   - Media mobile configurabile per range
+
+2. **Flow Histogram (`chart-fluid-velocity`)**:
+   - Grafico a barre per distribuzione portate
+   - Bins pre-calcolati dal backend con range start/end
+   - Tooltip con intervallo, percentuale e count punti
+   - Asse Y in percentuale, X in l/s
+
+3. **Duration Curve (`chart-curva-di-durata`)**:
+   - Curva durate/superamenti (0-100% tempo)
+   - Linea verticale fissa a 80% con calcolo Y dinamico
+   - Filtro valori < -50 l/s, tick solo su 0/80/100%
+   - Asse Y auto-scalato su min/max dataset
+
+#### Sistema di Gap Detection
+```javascript
+// Soglie temporali differenziate
+const GAP_THRESHOLD_SHORT_MS = 2 * 60 * 60 * 1000; // 2h per 24h/7d/1m
+const GAP_THRESHOLD_LONG_MS = 3 * 24 * 60 * 60 * 1000; // 3 giorni per 6m/1y/all
+
+// Due strategie per gestione gap
+buildFlowPointsWithGaps()      // Decimazione attiva: usa null/midpoint
+buildFlowPointsWithGapsShort() // Decimazione off: usa NaN per interrompere linee
+```
+
+#### Plugin Sistema
+- **hoverLinePlugin**: Linea verticale al passaggio mouse
+- **gapShadingPlugin**: Ombreggiatura rossa su gap temporali
+- **staticVLinePlugin**: Linee di riferimento con ticks personalizzati
+
+#### Gestione Performance
+- **Decimazione LTTB**: Algoritmo "Largest Triangle Three Buckets"
+  - Threshold: 1250 punti per flow-rate
+  - Preserva forma segnale riducendo dataset
+  - Info button mostrato solo quando attiva
+- **Parsing condizionale**: `parsing: false` solo con decimazione
+- **Update ottimizzato**: `chart.update("none")` per performance
+
+#### Sistema Range/Controlli
+- **Range buttons**: 24h, 7d, 1m, 6m, 1y, all
+- **Zoom**: Area drag, wheel zoom, pan su asse X
+- **Reset**: Ripristino zoom per grafico specifico
+- **Auto-refresh**: Solo range 24h, intervallo 60s
+
+#### Configurazione Dinamica
+- **API endpoints**: Differenziati per tipo grafico
+- **Labels range**: Solo flow-rate mostra date inizio/fine  
+- **Tooltip format**: Personalizzato per tipo dato
+- **Scale management**: Auto-fit con suggestedMin/Max
+
+#### Error Handling & Robustezza
+- Graceful fallback su errori API
+- Validazione dati con `Number.isFinite()`
+- Cleanup automatico istanze/polling
+- Gestione resize responsive
+
+### Update grafici (flow-chart e gap detection)
+- Risolto problema rendering per range brevi (24h/7d/1m): ora punti e gap vengono visualizzati correttamente
+- Implementata gestione differenziata gap: `NaN` per Chart.js senza decimazione, `null` con decimazione attiva
+- Eliminata label date dal grafico flow-rate per ridurre clutter visivo
+- Gap detection funziona su distanze temporali reali (non solo valori null nel dataset)
+
+### Update grafici (flow-chart e curva di durata)
+- `chart-flow-rate` ora usa asse X lineare (timestamp in ms), tick solo su inizio/fine e tooltip in formato `DD/MM/YYYY HH:MM:ss`.
+- Logica gap: se tra due misure il salto supera 2h (24h/7d/1m) o 3 giorni (6m/1y/all), la linea si interrompe e viene mostrata una banda rossa semitrasparente.
+- Soglia decimazione per flow-chart configurabile (attualmente 1250 punti) e bottone info visibile solo quando attiva.
+- Curva di durata: linea verticale a 80%, linea orizzontale su y=0 e tick solo su 0/80/100 sull'asse X.
+
+## Note Operative - Rete LAN (05/02/2026)
+
+Se il sito funziona sul PC server ma non è raggiungibile da altri PC in rete, le cause tipiche sono:
+
+- **Profilo di rete “Pubblico”**: Windows blocca le connessioni in ingresso.  
+  Imposta la rete come **Privata** in *Impostazioni → Rete e Internet → Proprietà rete*.
+- **Firewall Windows**: serve una regola in ingresso per la porta **8000** (TCP) sul profilo **Privato**.
+- **Ping non funziona**: il ping può essere bloccato anche se il sito è raggiungibile.  
+  Verifica con `Test-NetConnection 192.168.10.23 -Port 8000` dal PC client.
