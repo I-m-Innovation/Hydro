@@ -37,7 +37,7 @@ CSV_DATA = {
     "DBCAN" : {
         "name" : "Canaletta",
         "path" : "csv\\DBCAN.csv",
-        "path_filtered" : "csv_filtered\\DBCAN_filtered.csv",
+        "path_filtered" : "csv_filtered_H_fixed\\DBCAN_filtered_H_fixed.csv",
         "head" : 117, # in meters
         "flow" : [], # in m^3/s 
         "yield" : [] # in percentage
@@ -45,7 +45,7 @@ CSV_DATA = {
     "DBPAR" : {
         "name" : "Partitore",
         "path" : "csv\\DBPAR.csv",
-        "path_filtered" : "csv_filtered\\DBPAR_filtered.csv",
+        "path_filtered" : "csv_filtered_H_fixed\\DBPAR_filtered_H_fixed.csv",
         "head" :346.24, # in meters
         "flow" : [], # in m^3/s
         "yield" : [] # in percentage
@@ -60,7 +60,7 @@ CSV_DATA = {
     "DBST" : {
         "name" : "San Teodoro",
         "path" : "csv\\DBST.csv",
-        "path_filtered" : "csv_filtered\\DBST_filtered.csv",
+        "path_filtered" : "csv_filtered_H_fixed\\DBST_filtered_H_fixed.csv",
         "head" : 347.24, # in meters
         "flow" : [], # in m^3/s
         "yield" : [] # in percentage
@@ -86,7 +86,8 @@ l'andamento del rendimento in funzione della portata per ogni csv file.
 '''
 
 
-os.makedirs("csv_filtered", exist_ok=True)
+os.makedirs("csv_filtered_H_fixed", exist_ok=True)
+os.makedirs("csv_filtered_H_calculated", exist_ok=True)
 
 cols = ["timestamp", "Portata [l/s]", "Potenza [kW]", "Pressione [bar]"]
 required_cols = ["Portata [l/s]", "Potenza [kW]"]
@@ -158,6 +159,18 @@ for idx, impianto in enumerate(impianti, start=1):
     else:
         df["Potenza_attesa_filtered [kW]"] = df["Potenza_attesa [kW]"]
         df["Potenza_attesa_is_outlier"] = False
+
+    # hampel filter to flag outliers in measured power
+    if len(df) >= 3:
+        window_size = min(50, max(3, len(df) // 2))
+        results_pow_meas = hampel.hampel(df["Potenza [kW]"], window_size=window_size, n_sigma=3.0)
+        is_outlier_pow_meas = [False] * len(df)
+        for idx in results_pow_meas.outlier_indices:
+            if 0 <= idx < len(df):
+                is_outlier_pow_meas[idx] = True
+        df["Potenza_is_outlier"] = is_outlier_pow_meas
+    else:
+        df["Potenza_is_outlier"] = False
     # hampel filter to flag outliers in rendimento
     if len(df) >= 3:
         window_size = min(50, max(3, len(df) // 2))
@@ -171,6 +184,47 @@ for idx, impianto in enumerate(impianti, start=1):
     else:
         df["Rendimento_filtered"] = df["Rendimento"]
         df["Rendimento_is_outlier"] = False
+
+    # build a second dataset using H_mean (mean of non-outlier H_stimato)
+    if "H_stimato_is_outlier" in df.columns:
+        h_stimato_in = df[df["H_stimato_is_outlier"] == False]["H_stimato"]
+        H_mean = h_stimato_in.mean() if not h_stimato_in.empty else H
+    else:
+        H_mean = H
+
+    df_hmean = df.copy()
+    df_hmean["H_medio_usato"] = round(H_mean, 5)
+    df_hmean["potenza_idraulica"] = (p * g * H_mean * df_hmean["Q_[m3/s]"]).round(5)
+    df_hmean["Rendimento"] = ((df_hmean["Potenza [kW]"] * 1000) / df_hmean["potenza_idraulica"]).round(5)
+
+    if len(df_hmean) >= 3:
+        window_size = min(50, max(3, len(df_hmean) // 2))
+        results = hampel.hampel(df_hmean["Rendimento"], window_size=window_size, n_sigma=3.0)
+        df_hmean["Rendimento_filtered"] = pandas.Series(results.filtered_data).round(5)
+        is_outlier = [False] * len(df_hmean)
+        for idx in results.outlier_indices:
+            if 0 <= idx < len(df_hmean):
+                is_outlier[idx] = True
+        df_hmean["Rendimento_is_outlier"] = is_outlier
+    else:
+        df_hmean["Rendimento_filtered"] = df_hmean["Rendimento"]
+        df_hmean["Rendimento_is_outlier"] = False
+
+    df_hmean["Potenza_attesa [kW]"] = (df_hmean["Rendimento"] * p * g * H_mean * df_hmean["Q_[m3/s]"]) / 1000
+    df_hmean["Potenza_attesa [kW]"] = df_hmean["Potenza_attesa [kW]"].round(5)
+
+    if len(df_hmean) >= 3:
+        window_size = min(50, max(3, len(df_hmean) // 2))
+        results_pow = hampel.hampel(df_hmean["Potenza_attesa [kW]"], window_size=window_size, n_sigma=3.0)
+        df_hmean["Potenza_attesa_filtered [kW]"] = pandas.Series(results_pow.filtered_data).round(5)
+        is_outlier_pow = [False] * len(df_hmean)
+        for idx in results_pow.outlier_indices:
+            if 0 <= idx < len(df_hmean):
+                is_outlier_pow[idx] = True
+        df_hmean["Potenza_attesa_is_outlier"] = is_outlier_pow
+    else:
+        df_hmean["Potenza_attesa_filtered [kW]"] = df_hmean["Potenza_attesa [kW]"]
+        df_hmean["Potenza_attesa_is_outlier"] = False
     # save the filtered data in a new csv file
     df.to_csv(
         CSV_DATA[impianto]["path_filtered"], 
@@ -180,20 +234,44 @@ for idx, impianto in enumerate(impianti, start=1):
             "Q_[m3/s]",
             "potenza_idraulica",
             "Rendimento",
-            "Potenza_attesa [kW]",
-            "H_stimato",
-            "H_stimato_is_outlier",
-            "Potenza_attesa_filtered [kW]",
-            "Potenza_attesa_is_outlier",
             "Rendimento_filtered",
             "Rendimento_is_outlier",
+            "Potenza [kW]",
+            "Potenza_is_outlier",
+            "Potenza_attesa [kW]",
+            "Potenza_attesa_filtered [kW]",
+            "Potenza_attesa_is_outlier",
+            "H_stimato",
+            "H_stimato_is_outlier",
         ]
         )
     print(f"[1/3] {impianto}: filtered CSV saved to {CSV_DATA[impianto]['path_filtered']}")
 
+    hmean_path = f"csv_filtered_H_calculated\\{impianto}_filtered_H_calculated.csv"
+    df_hmean.to_csv(
+        hmean_path,
+        index=False,
+        columns=cols
+        + [
+            "Q_[m3/s]",
+            "potenza_idraulica",
+            "Rendimento",
+            "Rendimento_filtered",
+            "Rendimento_is_outlier",
+            "Potenza [kW]",
+            "Potenza_is_outlier",
+            "Potenza_attesa [kW]",
+            "Potenza_attesa_filtered [kW]",
+            "Potenza_attesa_is_outlier",
+            "H_stimato",
+            "H_stimato_is_outlier",
+            "H_medio_usato",
+        ],
+    )
+    print(f"[1/3] {impianto}: H_mean CSV saved to {hmean_path}")
 
-def _load_plot_data(impianto_key):
-    data_path = CSV_DATA[impianto_key]["path_filtered"]
+
+def _load_plot_data_from_path(data_path):
     df_plot = pandas.read_csv(data_path)
     # ensure numeric types for plotting
     for col in ["Portata [l/s]", "Rendimento"]:
@@ -207,15 +285,12 @@ def _load_plot_data(impianto_key):
         inliers = df_plot[df_plot["Rendimento_is_outlier"] == False]
     return df_plot, inliers, outliers
 
-def _load_power_plot_data(impianto_key):
-    data_path = CSV_DATA[impianto_key]["path_filtered"]
+def _load_power_plot_data_from_path(data_path):
     df_plot = pandas.read_csv(data_path)
-    for col in ["Portata [l/s]", "Potenza [kW]", "Potenza_attesa [kW]", "Potenza_attesa_is_outlier", "Rendimento"]:
+    for col in ["Portata [l/s]", "Potenza [kW]", "Potenza_attesa [kW]"]:
         if col in df_plot.columns:
             df_plot[col] = pandas.to_numeric(df_plot[col], errors="coerce")
-    df_plot = df_plot.dropna(
-        subset=["Portata [l/s]", "Potenza [kW]", "Potenza_attesa [kW]", "Rendimento"]
-    )
+    df_plot = df_plot.dropna(subset=["Portata [l/s]", "Potenza [kW]", "Potenza_attesa [kW]"])
     return df_plot
 
 def _downsample(df, max_points):
@@ -223,29 +298,17 @@ def _downsample(df, max_points):
         return df
     return df.sample(n=max_points, random_state=42)
 
-def plot_dual_axis_plotly_2d(fig, row, col, impianto_key, max_points=None):
-    df_plot = _load_power_plot_data(impianto_key)
-    df_plot = _downsample(df_plot, max_points)
-    df_plot = df_plot.sort_values(by="Portata [l/s]")
-
-    if "Potenza_attesa_is_outlier" in df_plot.columns:
-        df_power_inliers = df_plot[df_plot["Potenza_attesa_is_outlier"] == 0]
-        df_power_outliers = df_plot[df_plot["Potenza_attesa_is_outlier"] == 1]
-    else:
-        df_power_inliers = df_plot
-        df_power_outliers = pandas.DataFrame()
-
-    if "Rendimento_is_outlier" in df_plot.columns:
-        df_rend_inliers = df_plot[df_plot["Rendimento_is_outlier"] == 0]
-        df_rend_outliers = df_plot[df_plot["Rendimento_is_outlier"] == 1]
-    else:
-        df_rend_inliers = df_plot
-        df_rend_outliers = pandas.DataFrame()
+def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_points=None):
+    df_plot, inliers, outliers = _load_plot_data_from_path(data_path)
+    inliers = _downsample(inliers, max_points)
+    outliers = _downsample(outliers, max_points)
+    if outliers.empty and inliers.empty:
+        df_plot = _downsample(df_plot, max_points)
 
     fig.add_trace(
         go.Scattergl(
-            x=df_rend_inliers["Portata [l/s]"],
-            y=df_rend_inliers["Rendimento"] * 100,
+            x=inliers["Portata [l/s]"],
+            y=inliers["Rendimento"] * 100,
             mode="markers",
             marker={"size": 4, "color": "#2563eb", "opacity": 0.6},
             name="Rendimento (%)",
@@ -253,14 +316,13 @@ def plot_dual_axis_plotly_2d(fig, row, col, impianto_key, max_points=None):
         ),
         row=row,
         col=col,
-        secondary_y=False,
     )
 
-    if not df_rend_outliers.empty:
+    if not outliers.empty:
         fig.add_trace(
             go.Scattergl(
-                x=df_rend_outliers["Portata [l/s]"],
-                y=df_rend_outliers["Rendimento"] * 100,
+                x=outliers["Portata [l/s]"],
+                y=outliers["Rendimento"] * 100,
                 mode="markers",
                 marker={"size": 2, "color": "#93c5fd", "opacity": 0.3},
                 name="Outliers rendimento",
@@ -268,23 +330,104 @@ def plot_dual_axis_plotly_2d(fig, row, col, impianto_key, max_points=None):
             ),
             row=row,
             col=col,
-            secondary_y=False,
         )
-
-    df_power = (
-        df_power_inliers.groupby("Portata [l/s]", as_index=False)[["Potenza [kW]", "Potenza_attesa [kW]"]]
-        .mean()
-        .sort_values(by="Portata [l/s]")
-    )
-
-    if not df_power_outliers.empty:
+    if outliers.empty and inliers.empty:
         fig.add_trace(
             go.Scattergl(
-                x=df_power_outliers["Portata [l/s]"],
-                y=df_power_outliers["Potenza_attesa [kW]"],
+                x=df_plot["Portata [l/s]"],
+                y=df_plot["Rendimento"] * 100,
                 mode="markers",
-                marker={"size": 2, "color": "#86efac", "opacity": 0.3},
-                name="Outliers potenza attesa",
+                marker={"size": 4, "color": "#2563eb", "opacity": 0.6},
+                name="Rendimento (%)",
+                showlegend=True,
+            ),
+            row=row,
+            col=col,
+        )
+
+    df_power = _load_power_plot_data_from_path(data_path)
+    df_power = _downsample(df_power, max_points)
+    if not df_power.empty:
+        df_power = df_power.sort_values(by="Portata [l/s]")
+        # detect outliers for measured power (on the fly)
+        if len(df_power) >= 3:
+            window_size = min(50, max(3, len(df_power) // 2))
+            results_pow_meas = hampel.hampel(df_power["Potenza [kW]"], window_size=window_size, n_sigma=3.0)
+            is_outlier_meas = [False] * len(df_power)
+            for idx in results_pow_meas.outlier_indices:
+                if 0 <= idx < len(df_power):
+                    is_outlier_meas[idx] = True
+            df_power["Potenza_is_outlier"] = is_outlier_meas
+        else:
+            df_power["Potenza_is_outlier"] = False
+
+        # expected power outliers: use precomputed if available, otherwise compute
+        if "Potenza_attesa_is_outlier" not in df_power.columns:
+            if len(df_power) >= 3:
+                results_pow_exp = hampel.hampel(df_power["Potenza_attesa [kW]"], window_size=window_size, n_sigma=3.0)
+                is_outlier_exp = [False] * len(df_power)
+                for idx in results_pow_exp.outlier_indices:
+                    if 0 <= idx < len(df_power):
+                        is_outlier_exp[idx] = True
+                df_power["Potenza_attesa_is_outlier"] = is_outlier_exp
+            else:
+                df_power["Potenza_attesa_is_outlier"] = False
+
+        df_power_meas_out = df_power[df_power["Potenza_is_outlier"] == True]
+        df_power_exp_out = df_power[df_power["Potenza_attesa_is_outlier"] == True]
+
+        if not df_power_meas_out.empty:
+            fig.add_trace(
+                go.Scattergl(
+                    x=df_power_meas_out["Portata [l/s]"],
+                    y=df_power_meas_out["Potenza [kW]"],
+                    mode="markers",
+                    marker={"size": 2, "color": "#fdba74", "opacity": 0.3},
+                    name="Outliers potenza misurata",
+                    showlegend=True,
+                ),
+                row=row,
+                col=col,
+                secondary_y=True,
+            )
+
+        if not df_power_exp_out.empty:
+            fig.add_trace(
+                go.Scattergl(
+                    x=df_power_exp_out["Portata [l/s]"],
+                    y=df_power_exp_out["Potenza_attesa [kW]"],
+                    mode="markers",
+                    marker={"size": 2, "color": "#86efac", "opacity": 0.3},
+                    name="Outliers potenza attesa",
+                    showlegend=True,
+                ),
+                row=row,
+                col=col,
+                secondary_y=True,
+            )
+
+        df_power_meas_in = df_power[df_power["Potenza_is_outlier"] == False]
+        fig.add_trace(
+            go.Scatter(
+                x=df_power_meas_in["Portata [l/s]"],
+                y=df_power_meas_in["Potenza [kW]"],
+                mode="lines",
+                line={"width": 2, "color": "#f97316"},
+                name="Potenza misurata [kW]",
+                showlegend=True,
+            ),
+            row=row,
+            col=col,
+            secondary_y=True,
+        )
+        df_power_exp_in = df_power[df_power["Potenza_attesa_is_outlier"] == False]
+        fig.add_trace(
+            go.Scatter(
+                x=df_power_exp_in["Portata [l/s]"],
+                y=df_power_exp_in["Potenza_attesa [kW]"],
+                mode="lines",
+                line={"width": 2, "color": "#10b981"},
+                name="Potenza attesa [kW]",
                 showlegend=True,
             ),
             row=row,
@@ -292,53 +435,26 @@ def plot_dual_axis_plotly_2d(fig, row, col, impianto_key, max_points=None):
             secondary_y=True,
         )
 
-    fig.add_trace(
-        go.Scatter(
-            x=df_power["Portata [l/s]"],
-            y=df_power["Potenza [kW]"],
-            mode="lines",
-            line={"width": 2, "color": "#f97316"},
-            name="Potenza misurata [kW]",
-            showlegend=True,
-        ),
-        row=row,
-        col=col,
-        secondary_y=True,
-    )
-    fig.add_trace(
-        go.Scatter(
-            x=df_power["Portata [l/s]"],
-            y=df_power["Potenza_attesa [kW]"],
-            mode="lines",
-            line={"width": 2, "color": "#10b981"},
-            name="Potenza attesa [kW]",
-            showlegend=True,
-        ),
-        row=row,
-        col=col,
-        secondary_y=True,
-    )
-
-    fig.update_xaxes(title_text="Portata [l/s]", row=row, col=col)
-    fig.update_yaxes(
-        title_text="Rendimento (%)",
-        row=row,
-        col=col,
-        range=[0, 100],
-        fixedrange=True,
-        secondary_y=False,
-        dtick=5,
-        showgrid=True,
-        gridcolor="#d1d5db",
-        gridwidth=1,
-    )
     fig.update_xaxes(
+        title_text="Portata [l/s]",
         row=row,
         col=col,
         dtick=10,
         showgrid=True,
         gridcolor="#d1d5db",
         gridwidth=1,
+    )
+    fig.update_yaxes(
+        title_text="Rendimento (%)",
+        row=row,
+        col=col,
+        range=[0, 100],
+        fixedrange=True,
+        dtick=5,
+        showgrid=True,
+        gridcolor="#d1d5db",
+        gridwidth=1,
+        secondary_y=False,
     )
     fig.update_yaxes(
         title_text="Potenza [kW]",
@@ -352,24 +468,58 @@ def plot_dual_axis_plotly_2d(fig, row, col, impianto_key, max_points=None):
         gridcolor="#d1d5db",
         gridwidth=1,
     )
+    fig.update_xaxes(title_text="Portata [l/s]", row=row, col=col)
+    fig.update_yaxes(title_text="Rendimento (%)", row=row, col=col, secondary_y=False)
+    fig.update_yaxes(title_text="Potenza [kW]", row=row, col=col, secondary_y=True)
+    fig.add_annotation(
+        text=title,
+        xref="x domain",
+        yref="y domain",
+        x=0.5,
+        y=1.05,
+        showarrow=False,
+        row=row,
+        col=col,
+    )
 
 
 
 MAX_POINTS_PER_GROUP = 10000
-print("[2/3] Starting Plotly dual-axis plotting...")
+print("[2/3] Starting Plotly 2x3 grid plotting...")
 fig = make_subplots(
-    rows=1,
+    rows=2,
     cols=3,
-    subplot_titles=["DBCAN", "DBPAR", "DBST"],
-    specs=[[{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}]],
+    specs=[
+        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
+        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
+    ],
+    horizontal_spacing=0.06,
+    vertical_spacing=0.12,
 )
-plot_dual_axis_plotly_2d(fig, 1, 1, "DBCAN", max_points=MAX_POINTS_PER_GROUP)
-plot_dual_axis_plotly_2d(fig, 1, 2, "DBPAR", max_points=MAX_POINTS_PER_GROUP)
-plot_dual_axis_plotly_2d(fig, 1, 3, "DBST", max_points=MAX_POINTS_PER_GROUP)
+
+fixed_paths = {
+    "DBCAN": CSV_DATA["DBCAN"]["path_filtered"],
+    "DBPAR": CSV_DATA["DBPAR"]["path_filtered"],
+    "DBST": CSV_DATA["DBST"]["path_filtered"],
+}
+calc_paths = {
+    "DBCAN": "csv_filtered_H_calculated\\DBCAN_filtered_H_calculated.csv",
+    "DBPAR": "csv_filtered_H_calculated\\DBPAR_filtered_H_calculated.csv",
+    "DBST": "csv_filtered_H_calculated\\DBST_filtered_H_calculated.csv",
+}
+
+plot_rendimento_potenza_dual_axis(fig, 1, 1, fixed_paths["DBCAN"], "Canaletta (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
+plot_rendimento_potenza_dual_axis(fig, 1, 2, fixed_paths["DBPAR"], "Partitore (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
+plot_rendimento_potenza_dual_axis(fig, 1, 3, fixed_paths["DBST"], "San Teodoro (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
+
+plot_rendimento_potenza_dual_axis(fig, 2, 1, calc_paths["DBCAN"], "Canaletta (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
+plot_rendimento_potenza_dual_axis(fig, 2, 2, calc_paths["DBPAR"], "Partitore (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
+plot_rendimento_potenza_dual_axis(fig, 2, 3, calc_paths["DBST"], "San Teodoro (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
+
 fig.update_layout(
-    height=520,
+    height=900,
     width=1600,
-    title_text="Rendimento e Potenza vs Portata (Plotly)",
+    title_text="Rendimento e Potenza vs Portata (H fixed vs H calculated)",
     showlegend=True,
 )
 fig.show()
