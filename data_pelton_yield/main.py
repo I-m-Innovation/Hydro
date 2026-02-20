@@ -1,4 +1,5 @@
 '''
+
 with this code we'll try to predict the yield of a pelton turbine based on the data 
 we have collected during years of operation is some facilities.
 The datas are collected in a csv file and we'll first to use those to deduce the 
@@ -7,6 +8,7 @@ of the turbines based on the water flow and the head of the water. This informat
 will be used to predict the power output for the facility called "trebisacce" which 
 is to use a pelton turbine to generate power from the water flow of a river or stream.
 '''
+
 import os 
 import pandas
 import hampel as hampel
@@ -88,6 +90,8 @@ l'andamento del rendimento in funzione della portata per ogni csv file.
 
 os.makedirs("csv_filtered_H_fixed", exist_ok=True)
 os.makedirs("csv_filtered_H_calculated", exist_ok=True)
+CHARTS_DIR = os.path.join("..", "portale_hydro_3_0", "portale", "static", "portale", "pelton_yield_charts")
+os.makedirs(CHARTS_DIR, exist_ok=True)
 
 cols = ["timestamp", "Portata [l/s]", "Potenza [kW]", "Pressione [bar]"]
 required_cols = ["Portata [l/s]", "Potenza [kW]"]
@@ -298,7 +302,7 @@ def _downsample(df, max_points):
         return df
     return df.sample(n=max_points, random_state=42)
 
-def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_points=None):
+def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, legend_group, max_points=None):
     df_plot, inliers, outliers = _load_plot_data_from_path(data_path)
     inliers = _downsample(inliers, max_points)
     outliers = _downsample(outliers, max_points)
@@ -312,6 +316,8 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
             mode="markers",
             marker={"size": 4, "color": "#2563eb", "opacity": 0.6},
             name="Rendimento (%)",
+            legendgroup=legend_group,
+            legendgrouptitle_text=legend_group,
             showlegend=True,
         ),
         row=row,
@@ -326,6 +332,7 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
                 mode="markers",
                 marker={"size": 2, "color": "#93c5fd", "opacity": 0.3},
                 name="Outliers rendimento",
+                legendgroup=legend_group,
                 showlegend=True,
             ),
             row=row,
@@ -339,6 +346,7 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
                 mode="markers",
                 marker={"size": 4, "color": "#2563eb", "opacity": 0.6},
                 name="Rendimento (%)",
+                legendgroup=legend_group,
                 showlegend=True,
             ),
             row=row,
@@ -378,33 +386,35 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
 
         if not df_power_meas_out.empty:
             fig.add_trace(
-                go.Scattergl(
-                    x=df_power_meas_out["Portata [l/s]"],
-                    y=df_power_meas_out["Potenza [kW]"],
-                    mode="markers",
-                    marker={"size": 2, "color": "#fdba74", "opacity": 0.3},
-                    name="Outliers potenza misurata",
-                    showlegend=True,
-                ),
-                row=row,
-                col=col,
-                secondary_y=True,
-            )
+            go.Scattergl(
+                x=df_power_meas_out["Portata [l/s]"],
+                y=df_power_meas_out["Potenza [kW]"],
+                mode="markers",
+                marker={"size": 2, "color": "#fdba74", "opacity": 0.3},
+                name="Outliers potenza misurata",
+                legendgroup=legend_group,
+                showlegend=True,
+            ),
+            row=row,
+            col=col,
+            secondary_y=True,
+        )
 
         if not df_power_exp_out.empty:
             fig.add_trace(
-                go.Scattergl(
-                    x=df_power_exp_out["Portata [l/s]"],
-                    y=df_power_exp_out["Potenza_attesa [kW]"],
-                    mode="markers",
-                    marker={"size": 2, "color": "#86efac", "opacity": 0.3},
-                    name="Outliers potenza attesa",
-                    showlegend=True,
-                ),
-                row=row,
-                col=col,
-                secondary_y=True,
-            )
+            go.Scattergl(
+                x=df_power_exp_out["Portata [l/s]"],
+                y=df_power_exp_out["Potenza_attesa [kW]"],
+                mode="markers",
+                marker={"size": 2, "color": "#86efac", "opacity": 0.3},
+                name="Outliers potenza attesa",
+                legendgroup=legend_group,
+                showlegend=True,
+            ),
+            row=row,
+            col=col,
+            secondary_y=True,
+        )
 
         df_power_meas_in = df_power[df_power["Potenza_is_outlier"] == False]
         fig.add_trace(
@@ -414,6 +424,7 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
                 mode="lines",
                 line={"width": 2, "color": "#f97316"},
                 name="Potenza misurata [kW]",
+                legendgroup=legend_group,
                 showlegend=True,
             ),
             row=row,
@@ -428,6 +439,7 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
                 mode="lines",
                 line={"width": 2, "color": "#10b981"},
                 name="Potenza attesa [kW]",
+                legendgroup=legend_group,
                 showlegend=True,
             ),
             row=row,
@@ -485,18 +497,7 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, max_point
 
 
 MAX_POINTS_PER_GROUP = 10000
-print("[2/3] Starting Plotly 2x3 grid plotting...")
-fig = make_subplots(
-    rows=2,
-    cols=3,
-    specs=[
-        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
-        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
-    ],
-    horizontal_spacing=0.06,
-    vertical_spacing=0.12,
-)
-
+print("[2/3] Starting Plotly 2x3 grid and saving chart...")
 fixed_paths = {
     "DBCAN": CSV_DATA["DBCAN"]["path_filtered"],
     "DBPAR": CSV_DATA["DBPAR"]["path_filtered"],
@@ -508,13 +509,35 @@ calc_paths = {
     "DBST": "csv_filtered_H_calculated\\DBST_filtered_H_calculated.csv",
 }
 
-plot_rendimento_potenza_dual_axis(fig, 1, 1, fixed_paths["DBCAN"], "Canaletta (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
-plot_rendimento_potenza_dual_axis(fig, 1, 2, fixed_paths["DBPAR"], "Partitore (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
-plot_rendimento_potenza_dual_axis(fig, 1, 3, fixed_paths["DBST"], "San Teodoro (H_fixed)", max_points=MAX_POINTS_PER_GROUP)
+fig = make_subplots(
+    rows=2,
+    cols=3,
+    specs=[
+        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
+        [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
+    ],
+    horizontal_spacing=0.06,
+    vertical_spacing=0.12,
+)
+plot_rendimento_potenza_dual_axis(
+    fig, 1, 1, fixed_paths["DBCAN"], "Canaletta (H_fixed)", "Canaletta (H_fixed)", max_points=MAX_POINTS_PER_GROUP
+)
+plot_rendimento_potenza_dual_axis(
+    fig, 1, 2, fixed_paths["DBPAR"], "Partitore (H_fixed)", "Partitore (H_fixed)", max_points=MAX_POINTS_PER_GROUP
+)
+plot_rendimento_potenza_dual_axis(
+    fig, 1, 3, fixed_paths["DBST"], "San Teodoro (H_fixed)", "San Teodoro (H_fixed)", max_points=MAX_POINTS_PER_GROUP
+)
 
-plot_rendimento_potenza_dual_axis(fig, 2, 1, calc_paths["DBCAN"], "Canaletta (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
-plot_rendimento_potenza_dual_axis(fig, 2, 2, calc_paths["DBPAR"], "Partitore (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
-plot_rendimento_potenza_dual_axis(fig, 2, 3, calc_paths["DBST"], "San Teodoro (H_calculated)", max_points=MAX_POINTS_PER_GROUP)
+plot_rendimento_potenza_dual_axis(
+    fig, 2, 1, calc_paths["DBCAN"], "Canaletta (H_calculated)", "Canaletta (H_calculated)", max_points=MAX_POINTS_PER_GROUP
+)
+plot_rendimento_potenza_dual_axis(
+    fig, 2, 2, calc_paths["DBPAR"], "Partitore (H_calculated)", "Partitore (H_calculated)", max_points=MAX_POINTS_PER_GROUP
+)
+plot_rendimento_potenza_dual_axis(
+    fig, 2, 3, calc_paths["DBST"], "San Teodoro (H_calculated)", "San Teodoro (H_calculated)", max_points=MAX_POINTS_PER_GROUP
+)
 
 fig.update_layout(
     height=900,
@@ -522,6 +545,7 @@ fig.update_layout(
     title_text="Rendimento e Potenza vs Portata (H fixed vs H calculated)",
     showlegend=True,
 )
+fig.write_html(os.path.join(CHARTS_DIR, "pelton_yield_curve.html"))
 fig.show()
 
 
@@ -534,3 +558,328 @@ for impianto in impianti:
         if not df.empty:
             head_mean = df["H_stimato"].mean()
             print(f"[3/3] Estimated Head for {impianto} based on average pressure: {head_mean:.2f} m")
+
+
+'''
+potrei creare un altro file csv contenente i vari valori di portata e rendimento 
+per ogni csv file. In questo modo potrei avere un'idea generale dell'andamento 
+del rendimento in funzione della portata per ogni csv file. 
+Potrei quindi calcolare una media del rendimento dei tre csv file per ogni portata e creare un grafico che mostra 
+l'andamento del rendimento medio in funzione della portata per una turbina pelton. 
+Usando questo rendimento medio potrei stimare la potenza elettrica attesa per ogni portata usando la 
+formula: potenza_elettrica_attesa = rendimento_medio * p * g * H * Q.
+
+Quindi per trebissacce il salto al momento è di ~183m
+I dati di portata c'è li abbiamo 
+p e q sono dati fisici costanti
+il rendimento/portata lo possiamo stimare con i dati che abbiamo raccolto 
+dagli altri csv file, facendo una media del rendimento per ogni portata.
+
+Per il momento potrei costruire il file csv e provare a plottare
+il grafico del rendimento medio in funzione della portata, per vedere 
+se è coerente con quello che ci aspettiamo da una turbina pelton.
+
+'''
+
+# Build a mean efficiency curve vs flow (using H_fixed data) and estimate expected power for Trebisacce.
+TREBISACCE_HEAD = 183  # meters
+FLOW_BIN_LS = 0.10     # bin size in l/s
+
+def _build_mean_efficiency_curve(paths):
+    frames = []
+    for path in paths:
+        df_src = pandas.read_csv(path)
+        for col in ["Portata [l/s]", "Rendimento", "Rendimento_is_outlier"]:
+            if col in df_src.columns:
+                df_src[col] = pandas.to_numeric(df_src[col], errors="coerce")
+        if "Rendimento_is_outlier" in df_src.columns:
+            df_src = df_src[df_src["Rendimento_is_outlier"] == False]
+        df_src = df_src.dropna(subset=["Portata [l/s]", "Rendimento"])
+        if df_src.empty:
+            continue
+        df_src["Portata_bin"] = (df_src["Portata [l/s]"] / FLOW_BIN_LS).round(0) * FLOW_BIN_LS
+        frames.append(df_src[["Portata_bin", "Rendimento"]])
+    if not frames:
+        return pandas.DataFrame(columns=["Portata_bin", "Rendimento_mean", "N"])
+    df_all = pandas.concat(frames, ignore_index=True)
+    df_all = df_all[df_all["Portata_bin"] > 0]
+    grouped = df_all.groupby("Portata_bin", as_index=False)["Rendimento"].agg(
+        Rendimento_mean="mean",
+        N="count",
+    )
+    grouped = grouped.sort_values(by="Portata_bin")
+    if len(grouped) >= 3:
+        window_size = min(50, max(3, len(grouped) // 2))
+        results = hampel.hampel(grouped["Rendimento_mean"], window_size=window_size, n_sigma=3.0)
+        is_outlier = [False] * len(grouped)
+        for idx in results.outlier_indices:
+            if 0 <= idx < len(grouped):
+                is_outlier[idx] = True
+        grouped["Rendimento_is_outlier"] = is_outlier
+        grouped = grouped[grouped["Rendimento_is_outlier"] == False].copy()
+        grouped = grouped.drop(columns=["Rendimento_is_outlier"])
+    return grouped
+
+def _build_single_efficiency_curve(path, flow_bin_ls=1.0):
+    df_src = pandas.read_csv(path)
+    for col in ["Portata [l/s]", "Rendimento", "Rendimento_is_outlier"]:
+        if col in df_src.columns:
+            df_src[col] = pandas.to_numeric(df_src[col], errors="coerce")
+    if "Rendimento_is_outlier" in df_src.columns:
+        df_src = df_src[df_src["Rendimento_is_outlier"] == False]
+    df_src = df_src.dropna(subset=["Portata [l/s]", "Rendimento"])
+    if df_src.empty:
+        return pandas.DataFrame(columns=["Portata_bin", "Rendimento_mean"])
+    df_src["Portata_bin"] = (df_src["Portata [l/s]"] / flow_bin_ls).round(0) * flow_bin_ls
+    df_src = df_src[df_src["Portata_bin"] > 0]
+    grouped = df_src.groupby("Portata_bin", as_index=False)["Rendimento"].mean()
+    grouped = grouped.sort_values(by="Portata_bin")
+    grouped["Rendimento"] = grouped["Rendimento"].round(5)
+    return grouped.rename(columns={"Rendimento": "Rendimento_mean"})
+
+mean_curve = _build_mean_efficiency_curve(
+    [CSV_DATA["DBCAN"]["path_filtered"], CSV_DATA["DBPAR"]["path_filtered"], CSV_DATA["DBST"]["path_filtered"]]
+)
+if not mean_curve.empty:
+    mean_curve["Q_[m3/s]"] = (mean_curve["Portata_bin"] / 1000).round(5)
+    mean_curve["Potenza_attesa_trebisacce [kW]"] = (
+        mean_curve["Rendimento_mean"] * p * g * TREBISACCE_HEAD * mean_curve["Q_[m3/s]"]
+    ) / 1000
+    mean_curve["Potenza_attesa_trebisacce [kW]"] = mean_curve["Potenza_attesa_trebisacce [kW]"].round(5)
+    mean_curve["Portata_bin"] = mean_curve["Portata_bin"].round(5)
+    mean_curve["Rendimento_mean"] = mean_curve["Rendimento_mean"].round(5)
+
+    # add per-plant mean efficiency columns to the mean curve CSV
+    curve_can = _build_single_efficiency_curve(CSV_DATA["DBCAN"]["path_filtered"]).rename(
+        columns={"Rendimento_mean": "rendimento_CAN"}
+    )
+    curve_par = _build_single_efficiency_curve(CSV_DATA["DBPAR"]["path_filtered"]).rename(
+        columns={"Rendimento_mean": "rendimento_PAR"}
+    )
+    curve_st = _build_single_efficiency_curve(CSV_DATA["DBST"]["path_filtered"]).rename(
+        columns={"Rendimento_mean": "rendimento_ST"}
+    )
+
+    mean_curve = mean_curve.merge(curve_can, on="Portata_bin", how="left")
+    mean_curve = mean_curve.merge(curve_par, on="Portata_bin", how="left")
+    mean_curve = mean_curve.merge(curve_st, on="Portata_bin", how="left")
+
+    CSV_CURVE_DIR = os.path.join("csv_pelton_yield_curve")
+    os.makedirs(CSV_CURVE_DIR, exist_ok=True)
+    mean_curve_path = os.path.join(CSV_CURVE_DIR, "rendimento_medio_per_turbine_pelton.csv")
+    mean_curve.to_csv(mean_curve_path, index=False)
+    print(f"[3/3] Mean efficiency curve saved to {mean_curve_path}")
+
+    fig_mean = make_subplots(rows=1, cols=1)
+    fig_mean.add_trace(
+        go.Scatter(
+            x=mean_curve["Portata_bin"],
+            y=mean_curve["Rendimento_mean"] * 100,
+            mode="lines+markers",
+            line={"width": 2, "color": "#2563eb"},
+            name="Rendimento medio (%)",
+        )
+    )
+    fig_mean.update_layout(
+        title_text="Rendimento medio vs Portata (media impianti H_fixed)",
+        height=520,
+        width=900,
+    )
+    fig_mean.update_xaxes(title_text="Portata [l/s]")
+    fig_mean.update_yaxes(title_text="Rendimento (%)", range=[0, 100])
+    fig_mean.write_html(os.path.join(CHARTS_DIR, "rendimento_medio_portata_trebisacce.html"))
+
+    # Plot all four yield curves (three plants + mean)
+    def _build_single_efficiency_curve(path):
+        df_src = pandas.read_csv(path)
+        for col in ["Portata [l/s]", "Rendimento", "Rendimento_is_outlier"]:
+            if col in df_src.columns:
+                df_src[col] = pandas.to_numeric(df_src[col], errors="coerce")
+        if "Rendimento_is_outlier" in df_src.columns:
+            df_src = df_src[df_src["Rendimento_is_outlier"] == False]
+        df_src = df_src.dropna(subset=["Portata [l/s]", "Rendimento"])
+        if df_src.empty:
+            return pandas.DataFrame(columns=["Portata_bin", "Rendimento_median"])
+        df_src["Portata_bin"] = (df_src["Portata [l/s]"] / FLOW_BIN_LS).round(0) * FLOW_BIN_LS
+        df_src = df_src[df_src["Portata_bin"] > 0]
+        grouped = df_src.groupby("Portata_bin", as_index=False)["Rendimento"].mean()
+        grouped = grouped.sort_values(by="Portata_bin")
+        grouped["Rendimento"] = grouped["Rendimento"].round(5)
+        return grouped.rename(columns={"Rendimento": "Rendimento_mean"})
+
+    fig_all = make_subplots(rows=1, cols=1)
+    if not curve_can.empty:
+        low_can = curve_can[curve_can["Portata_bin"] < 7]
+        mid_can = curve_can[(curve_can["Portata_bin"] >= 7) & (curve_can["Portata_bin"] <= 100)]
+        high_can = curve_can[curve_can["Portata_bin"] > 100]
+        if not low_can.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=low_can["Portata_bin"],
+                    y=low_can["rendimento_CAN"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#93c5fd"},
+                    name="Canaletta",
+                    showlegend=True,
+                )
+            )
+        if not mid_can.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=mid_can["Portata_bin"],
+                    y=mid_can["rendimento_CAN"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#1f77b4"},
+                    name="Canaletta",
+                    showlegend=False,
+                )
+            )
+        if not high_can.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=high_can["Portata_bin"],
+                    y=high_can["rendimento_CAN"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#93c5fd"},
+                    name="Canaletta",
+                    showlegend=False,
+                )
+            )
+    if not curve_par.empty:
+        low_par = curve_par[curve_par["Portata_bin"] < 7]
+        mid_par = curve_par[(curve_par["Portata_bin"] >= 7) & (curve_par["Portata_bin"] <= 100)]
+        high_par = curve_par[curve_par["Portata_bin"] > 100]
+        if not low_par.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=low_par["Portata_bin"],
+                    y=low_par["rendimento_PAR"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#fdba74"},
+                    name="Partitore",
+                    showlegend=True,
+                )
+            )
+        if not mid_par.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=mid_par["Portata_bin"],
+                    y=mid_par["rendimento_PAR"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#ff7f0e"},
+                    name="Partitore",
+                    showlegend=False,
+                )
+            )
+        if not high_par.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=high_par["Portata_bin"],
+                    y=high_par["rendimento_PAR"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#fdba74"},
+                    name="Partitore",
+                    showlegend=False,
+                )
+            )
+    if not curve_st.empty:
+        low_st = curve_st[curve_st["Portata_bin"] < 7]
+        mid_st = curve_st[(curve_st["Portata_bin"] >= 7) & (curve_st["Portata_bin"] <= 100)]
+        high_st = curve_st[curve_st["Portata_bin"] > 100]
+        if not low_st.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=low_st["Portata_bin"],
+                    y=low_st["rendimento_ST"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#86efac"},
+                    name="San Teodoro",
+                    showlegend=True,
+                )
+            )
+        if not mid_st.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=mid_st["Portata_bin"],
+                    y=mid_st["rendimento_ST"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#2ca02c"},
+                    name="San Teodoro",
+                    showlegend=False,
+                )
+            )
+        if not high_st.empty:
+            fig_all.add_trace(
+                go.Scatter(
+                    x=high_st["Portata_bin"],
+                    y=high_st["rendimento_ST"] * 100,
+                    mode="lines",
+                    line={"width": 2, "color": "#86efac"},
+                    name="San Teodoro",
+                    showlegend=False,
+                )
+            )
+
+    low_mean = mean_curve[mean_curve["Portata_bin"] < 7]
+    mid_mean = mean_curve[(mean_curve["Portata_bin"] >= 7) & (mean_curve["Portata_bin"] <= 100)]
+    high_mean = mean_curve[mean_curve["Portata_bin"] > 100]
+    if not low_mean.empty:
+        fig_all.add_trace(
+            go.Scatter(
+                x=low_mean["Portata_bin"],
+                y=low_mean["Rendimento_mean"] * 100,
+                mode="lines",
+                line={"width": 3, "color": "#fecaca"},
+                name="Media",
+                showlegend=True,
+            )
+        )
+    if not mid_mean.empty:
+        fig_all.add_trace(
+            go.Scatter(
+                x=mid_mean["Portata_bin"],
+                y=mid_mean["Rendimento_mean"] * 100,
+                mode="lines",
+                line={"width": 3, "color": "#d62728"},
+                name="Media",
+                showlegend=False,
+            )
+        )
+    if not high_mean.empty:
+        fig_all.add_trace(
+            go.Scatter(
+                x=high_mean["Portata_bin"],
+                y=high_mean["Rendimento_mean"] * 100,
+                mode="lines",
+                line={"width": 3, "color": "#fecaca"},
+                name="Media",
+                showlegend=False,
+            )
+        )
+
+    fig_all.update_layout(
+        title_text="Curve rendimento: impianti + media",
+        height=520,
+        width=900,
+        showlegend=True,
+    )
+    fig_all.update_xaxes(
+        title_text="Portata [l/s]",
+        showgrid=True,
+        gridcolor="#d1d5db",
+        gridwidth=1,
+        showline=True,
+        linecolor="#9ca3af",
+        linewidth=2,
+    )
+    fig_all.update_yaxes(
+        title_text="Rendimento (%)",
+        range=[0, 100],
+        showgrid=True,
+        gridcolor="#d1d5db",
+        gridwidth=1,
+        showline=True,
+        linecolor="#9ca3af",
+        linewidth=2,
+    )
+    fig_all.write_html(os.path.join(CHARTS_DIR, "rendimento_curve_quattro.html"))
