@@ -49,3 +49,4 @@ staticfiles/
 todos_portale_hydro.txt
 todos_portale_hydro.md
 fill_missing_measurements.py
+alert_state.json
