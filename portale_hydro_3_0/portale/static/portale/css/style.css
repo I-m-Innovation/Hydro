@@ -256,6 +256,7 @@ img {
   border-right: 1px solid var(--color-border);
   height: 100%;
   overflow-y: auto;
+  transition: .5s ease;
 }
 
 /* stato: sidebar nascosta */
@@ -268,10 +269,10 @@ body.sidebar-collapsed #lista-impianti {
 }
 
 /* =========================================================
-   PANNELLO A DESTRA: grid interna (info + iframe)
-   - Non rompe .iframe-container: funziona sia con .iframe-container,
-     sia con .facility-panel/.facility-grid se li usi nel template.
-   ========================================================= */
+PANNELLO A DESTRA: grid interna (info + iframe)
+- Non rompe .iframe-container: funziona sia con .iframe-container,
+sia con .facility-panel/.facility-grid se li usi nel template.
+========================================================= */
 
 /* Se usi un wrapper tipo <div class="facility-panel"> ... */
 .facility-panel {
@@ -487,7 +488,8 @@ body.sidebar-collapsed #lista-impianti {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-auto-rows: auto;
-  gap: 1rem;
+  row-gap: 0;
+  column-gap: 1rem;
   height: auto;
   position: relative;
   padding-bottom: 0;
@@ -525,8 +527,8 @@ body.sidebar-collapsed #lista-impianti {
 .chart-card-body {
   position: relative;
   flex: 1;
-  min-height: 220px;
-  max-height: 260px;
+  min-height: 300px;
+  max-height: 500px;
   display: flex;
   height: auto;
   overflow: hidden;
@@ -536,6 +538,11 @@ body.sidebar-collapsed #lista-impianti {
   min-height: 260px;
   height: 320px;
   max-height: 320px;
+}
+
+.facility-plot-grid:not(.is-zoomed) .chart-card:not(.chart-flow-card) .chart-card-body {
+  height: 330px;
+  max-height: 330px;
 }
 
 .chart-body-grid {
@@ -873,8 +880,8 @@ body.sidebar-collapsed #lista-impianti {
 }
 
 /* =========================================================
-   LISTA IMPIANTI
-   ========================================================= */
+LISTA IMPIANTI
+========================================================= */
 
 #lista-link-impianti,
 #lista-link-impianti-non-attivi {
