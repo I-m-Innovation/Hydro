@@ -451,3 +451,48 @@ python -c "from config.settings import *; print('Config OK')"
 - **Esecuzione on-demand**: Job eseguibili manualmente per testing e verifica
 
 ---
+
+---
+
+## Pelton Turbine Data & Yield Curves (data_pelton_yield)
+
+This section documents the JSON structure used to configure Pelton datasets. If you switch to JSON, use this schema.
+
+```json
+{
+  "DBCAN": {
+    "name": "Canaletta",
+    "path": "csv_all\\raw\\DBCAN.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBCAN_filtered_H_fixed.csv",
+    "head": 117,
+    "flow": [],
+    "yield": []
+  },
+  "DBPAR": {
+    "name": "Partitore",
+    "path": "csv_all\\raw\\DBPAR.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBPAR_filtered_H_fixed.csv",
+    "head": 346.24,
+    "flow": [],
+    "yield": []
+  },
+  "DBST": {
+    "name": "San Teodoro",
+    "path": "csv_all\\raw\\DBST.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBST_filtered_H_fixed.csv",
+    "head": 347.24,
+    "flow": [],
+    "yield": []
+  }
+}
+```
+
+Field meanings:
+- `DBCAN`, `DBPAR`, `DBST`: plant identifiers. Each key maps to a plant configuration object.
+- `name`: human-readable plant name.
+- `path`: relative path to the raw input CSV for that plant.
+- `path_filtered`: legacy output path for H_fixed processing (currently not used in the H_calculated flow).
+- `head`: fixed head value in meters (historical reference; H_calculated uses pressure instead).
+- `flow`: reserved list for flow values (currently unused).
+- `yield`: reserved list for efficiency values (currently unused).
+
