@@ -10,7 +10,8 @@ from curves import build_and_save_mean_curves
 
 
 def main():
-    os.makedirs("csv_all\\h_calculated", exist_ok=True)
+    """Process all plants: load data, compute efficiency, save results and generate charts."""
+    os.makedirs(os.path.join("csv_all", "h_calculated"), exist_ok=True)
     os.makedirs(CHARTS_DIR, exist_ok=True)
 
     calc_paths = {}
@@ -19,7 +20,7 @@ def main():
         h_mean = compute_h_mean(df)             # compute the mean head for this plant based on the original data
         df_h = build_h_calculated(df, h_mean)
 
-        hmean_path = f"csv_all\\h_calculated\\{impianto}_filtered_H_calculated.csv"
+        hmean_path = os.path.join("csv_all", "h_calculated", f"{impianto}_filtered_H_calculated.csv")
         df_h.to_csv(
             hmean_path,
             index=False,
@@ -47,7 +48,7 @@ def main():
         calc_paths[impianto] = hmean_path
 
     print("[2/3] Starting Plotly 1x3 grid (H_calculated only) and saving chart...")
-    plot_h_calculated_grid(calc_paths, CHARTS_DIR, max_points=10000)
+    plot_h_calculated_grid(calc_paths, CHARTS_DIR, max_points=10000, use_filtered=False)
 
     for impianto in calc_paths:
         df = pandas.read_csv(calc_paths[impianto])

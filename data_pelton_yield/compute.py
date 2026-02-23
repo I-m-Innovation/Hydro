@@ -1,14 +1,14 @@
 import pandas
 import hampel as hampel
 
-from constants import p, g
+from constants import p, g, HAMPEL_WINDOW_SIZE, HAMPEL_N_SIGMA
 
 
 def _hampel_filtered(series):
     if len(series) < 3:
         return series, [False] * len(series)
-    window_size = min(50, max(3, len(series) // 2))
-    results = hampel.hampel(series, window_size=window_size, n_sigma=3.0)
+    window_size = min(HAMPEL_WINDOW_SIZE, max(3, len(series) // 2))
+    results = hampel.hampel(series, window_size=window_size, n_sigma=HAMPEL_N_SIGMA)
     filtered = pandas.Series(results.filtered_data)
     flags = [False] * len(series)
     for idx in results.outlier_indices:
@@ -18,6 +18,7 @@ def _hampel_filtered(series):
 
 
 def compute_h_mean(df):
+    """Calculate mean head excluding outliers if available."""
     if "H_stimato_is_outlier" in df.columns:
         h_stimato_in = df[df["H_stimato_is_outlier"] == False]["H_stimato"]
         if not h_stimato_in.empty:
@@ -26,6 +27,7 @@ def compute_h_mean(df):
 
 
 def build_h_calculated(df, h_mean):
+    """Calculate hydraulic power, efficiency, and expected power with outlier detection."""
     df_h = df.copy()
     df_h["H_medio_usato"] = round(h_mean, 5)
 

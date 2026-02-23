@@ -222,12 +222,151 @@ def plot_rendimento_potenza_dual_axis(fig, row, col, data_path, title, legend_gr
     )
 
 
-def plot_h_calculated_grid(calc_paths, charts_dir, max_points=10000):
+def _load_3d_plot_data(data_path, use_filtered=False):
+    df = pandas.read_csv(data_path)
+    for col in ["Portata [l/s]", "Rendimento", "Rendimento_filtered", "Pressione [bar]"]:
+        if col in df.columns:
+            df[col] = pandas.to_numeric(df[col], errors="coerce")
+    y_col = "Rendimento_filtered" if use_filtered and "Rendimento_filtered" in df.columns else "Rendimento"
+    df = df.dropna(subset=["Portata [l/s]", y_col, "Pressione [bar]"])
+    return df, y_col
+
+
+def _add_3d_trace(fig, row, col, data_path, title, use_filtered=False, max_points=None):
+    df, y_col = _load_3d_plot_data(data_path, use_filtered=use_filtered)
+    df = _downsample(df, max_points)
+    outliers = pandas.DataFrame()
+    inliers = df
+    if "Rendimento_is_outlier" in df.columns:
+        outliers = df[df["Rendimento_is_outlier"] == True]
+        inliers = df[df["Rendimento_is_outlier"] == False]
+
+    if not inliers.empty:
+        fig.add_trace(
+            go.Scatter3d(
+                x=inliers["Portata [l/s]"],
+                y=inliers[y_col] * 100,
+                z=inliers["Pressione [bar]"],
+                mode="markers",
+                marker={"size": 2, "color": "#2563eb", "opacity": 0.6},
+                name=f"{title} 3D",
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+    if not outliers.empty:
+        fig.add_trace(
+            go.Scatter3d(
+                x=outliers["Portata [l/s]"],
+                y=outliers[y_col] * 100,
+                z=outliers["Pressione [bar]"],
+                mode="markers",
+                marker={"size": 2, "color": "#60a5fa"},
+                name=f"{title} 3D outliers",
+                showlegend=False,
+            ),
+            row=row,
+            col=col,
+        )
+    scene_key = {1: "scene", 2: "scene2", 3: "scene3"}[col]
+    fig.update_layout(
+        **{
+            scene_key: dict(
+                xaxis=dict(
+                    title="Portata [l/s]",
+                    showgrid=True,
+                    gridcolor="#000000",
+                    showbackground=True,
+                    backgroundcolor="#f3f4f6",
+                    showline=True,
+                    linecolor="#000000",
+                    zeroline=False,
+                ),
+                yaxis=dict(
+                    title="Rendimento (%)",
+                    showgrid=True,
+                    gridcolor="#000000",
+                    showbackground=True,
+                    backgroundcolor="#f3f4f6",
+                    showline=True,
+                    linecolor="#000000",
+                    range=[0, 100],
+                    zeroline=False,
+                ),
+                zaxis=dict(
+                    title="Pressione [bar]",
+                    showgrid=True,
+                    gridcolor="#000000",
+                    showbackground=True,
+                    backgroundcolor="#f3f4f6",
+                    showline=True,
+                    linecolor="#000000",
+                    zeroline=False,
+                ),
+            )
+        }
+    )
+
+
+def _add_pressure_2d(fig, row, col, data_path, title, use_filtered=False, max_points=None):
+    df, y_col = _load_3d_plot_data(data_path, use_filtered=use_filtered)
+    df = _downsample(df, max_points)
+    fig.add_trace(
+        go.Scatter(
+            x=df["Portata [l/s]"],
+            y=df[y_col] * 100,
+            mode="markers",
+            marker=dict(
+                size=4,
+                color=df["Pressione [bar]"],
+                colorscale="Viridis",
+                showscale=(row == 3 and col == 3),
+                colorbar=dict(
+                    title="Pressione [bar]",
+                    x=1.05,
+                    y=0.13,
+                    len=0.3,
+                    
+                ),
+                opacity=0.8,
+            ),
+            name=f"{title} Pressione",
+            showlegend=False,
+        ),
+        row=row,
+        col=col,
+    )
+    fig.update_xaxes(
+        title_text="Portata [l/s]",
+        row=row,
+        col=col,
+        dtick=5,
+        showgrid=True,
+        gridcolor="#bdbdbd",
+    )
+    fig.update_yaxes(
+        title_text="Rendimento (%)",
+        row=row,
+        col=col,
+        range=[0, 100],
+        dtick=5,
+        showgrid=True,
+        gridcolor="#cfcfcf",
+    )
+
+
+def plot_h_calculated_grid(calc_paths, charts_dir, max_points=10000, use_filtered=False):
     fig = make_subplots(
-        rows=1,
+        rows=3,
         cols=3,
-        specs=[[{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}]],
+        specs=[
+            [{"secondary_y": True}, {"secondary_y": True}, {"secondary_y": True}],
+            [{"type": "scene"}, {"type": "scene"}, {"type": "scene"}],
+            [{}, {}, {}],
+        ],
         horizontal_spacing=0.06,
+        vertical_spacing=0.1,
     )
     plot_rendimento_potenza_dual_axis(
         fig, 1, 1, calc_paths["DBCAN"], "Canaletta (H_calculated)", "Canaletta (H_calculated)", max_points=max_points
@@ -239,11 +378,26 @@ def plot_h_calculated_grid(calc_paths, charts_dir, max_points=10000):
         fig, 1, 3, calc_paths["DBST"], "San Teodoro (H_calculated)", "San Teodoro (H_calculated)", max_points=max_points
     )
 
+    _add_3d_trace(fig, 2, 1, calc_paths["DBCAN"], "Canaletta", use_filtered=use_filtered, max_points=max_points)
+    _add_3d_trace(fig, 2, 2, calc_paths["DBPAR"], "Partitore", use_filtered=use_filtered, max_points=max_points)
+    _add_3d_trace(fig, 2, 3, calc_paths["DBST"], "San Teodoro", use_filtered=use_filtered, max_points=max_points)
+
+    _add_pressure_2d(fig, 3, 1, calc_paths["DBCAN"], "Canaletta", use_filtered=use_filtered, max_points=max_points)
+    _add_pressure_2d(fig, 3, 2, calc_paths["DBPAR"], "Partitore", use_filtered=use_filtered, max_points=max_points)
+    _add_pressure_2d(fig, 3, 3, calc_paths["DBST"], "San Teodoro", use_filtered=use_filtered, max_points=max_points)
+
     fig.update_layout(
-        height=520,
+        height=1650,
         width=1600,
-        title_text="Rendimento e Potenza vs Portata (H calculated)",
+        title_text="Rendimento e Potenza vs Portata (H calculated) + 3D (Pressione) + 2D Pressione",
         showlegend=True,
+        legend=dict(
+            x=1.02,
+            y=1.0,
+            xanchor="left",
+            yanchor="top",
+        ),
+        margin=dict(r=360, l=40, t=80, b=40),
     )
     fig.write_html(os.path.join(charts_dir, "pelton_yield_curve.html"))
     fig.show()

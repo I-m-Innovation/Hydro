@@ -1,15 +1,15 @@
 import pandas
 import hampel as hampel
 
-from constants import p, g, cols, required_cols
+from constants import p, g, cols, required_cols, HAMPEL_WINDOW_SIZE, HAMPEL_N_SIGMA
 
 
 def _hampel_flags(series):
     # if the series is too short, return all False (no outliers)
     if len(series) < 3:
         return [False] * len(series)
-    window_size = min(50, max(3, len(series) // 2))
-    results = hampel.hampel(series, window_size=window_size, n_sigma=3.0)
+    window_size = min(HAMPEL_WINDOW_SIZE, max(3, len(series) // 2))
+    results = hampel.hampel(series, window_size=window_size, n_sigma=HAMPEL_N_SIGMA)
     flags = [False] * len(series)
     for idx in results.outlier_indices:
         if 0 <= idx < len(series):

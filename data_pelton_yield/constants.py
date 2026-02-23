@@ -12,5 +12,9 @@ required_cols = ["Portata [l/s]", "Potenza [kW]"]
 TREBISACCE_HEAD = 183  # meters
 FLOW_BIN_LS = 0.10     # bin size in l/s
 
+# hampel filter settings
+HAMPEL_WINDOW_SIZE = 50  # default window size
+HAMPEL_N_SIGMA = 3.0     # sigma threshold for outlier detection
+
 # output dirs
 CHARTS_DIR = os.path.join("..", "portale_hydro_3_0", "portale", "static", "portale", "pelton_yield_charts")
