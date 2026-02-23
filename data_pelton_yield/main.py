@@ -2,7 +2,7 @@ import os
 import pandas
 
 from CSV_datas import CSV_DATA, save_csv_data
-from constants import CHARTS_DIR
+from constants import CHARTS_DIR, LOCAL_CHARTS_DIR
 from compute import compute_h_mean, build_h_calculated
 from io_data import load_and_prepare
 from plots import plot_h_calculated_grid
@@ -13,6 +13,7 @@ def main():
     """Process all plants: load data, compute efficiency, save results and generate charts."""
     os.makedirs(os.path.join("csv_all", "h_calculated"), exist_ok=True)
     os.makedirs(CHARTS_DIR, exist_ok=True)
+    os.makedirs(LOCAL_CHARTS_DIR, exist_ok=True)
 
     calc_paths = {}
     for impianto, meta in CSV_DATA.items():
@@ -47,8 +48,9 @@ def main():
         print(f"[1/3] {impianto}: H_calculated CSV saved to {hmean_path}")
         calc_paths[impianto] = hmean_path
 
-    print("[2/3] Starting Plotly 1x3 grid (H_calculated only) and saving chart...")
+    print("[2/3] Starting Plotly 1x3 grid (H_calculated only) and saving charts...")
     plot_h_calculated_grid(calc_paths, CHARTS_DIR, max_points=10000, use_filtered=False)
+    plot_h_calculated_grid(calc_paths, LOCAL_CHARTS_DIR, max_points=10000, use_filtered=False)
 
     for impianto in calc_paths:
         df = pandas.read_csv(calc_paths[impianto])
@@ -61,7 +63,9 @@ def main():
                 print(f"[3/3] Estimated Head for {impianto} based on average pressure: {head_mean:.2f} m")
 
     save_csv_data(CSV_DATA)
+    print("[3/3] Building and saving mean curves to both directories...")
     build_and_save_mean_curves(calc_paths, CHARTS_DIR)
+    build_and_save_mean_curves(calc_paths, LOCAL_CHARTS_DIR)
 
 
 if __name__ == "__main__":

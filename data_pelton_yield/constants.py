@@ -18,3 +18,4 @@ HAMPEL_N_SIGMA = 3.0     # sigma threshold for outlier detection
 
 # output dirs
 CHARTS_DIR = os.path.join("..", "portale_hydro_3_0", "portale", "static", "portale", "pelton_yield_charts")
+LOCAL_CHARTS_DIR = os.path.join("charts_archive", "last_computed_charts")
