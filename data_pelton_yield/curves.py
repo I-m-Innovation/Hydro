@@ -37,9 +37,15 @@ def _build_mean_efficiency_curve(paths):
         for idx in results.outlier_indices:
             if 0 <= idx < len(grouped):
                 is_outlier[idx] = True
-        grouped["Rendimento_is_outlier"] = is_outlier
-        grouped = grouped[grouped["Rendimento_is_outlier"] == False].copy()
-        grouped = grouped.drop(columns=["Rendimento_is_outlier"])
+        grouped["Rendimento_mean_is_outlier"] = is_outlier
+    else:
+        grouped["Rendimento_mean_is_outlier"] = False
+
+    grouped["Rendimento_mean_is_outlier"] = (
+        grouped["Rendimento_mean_is_outlier"]
+        | (grouped["Rendimento_mean"] > 1)
+        | (grouped["Rendimento_mean"] < 0)
+    )
     return grouped
 
 
@@ -161,80 +167,78 @@ def build_and_save_mean_curves(calc_paths, charts_dir):
 
 
 def _plot_curve_segments(fig, curve_df, col_name, label, colors):
-    low = curve_df[curve_df["Portata_bin"] < 7]
-    mid = curve_df[(curve_df["Portata_bin"] >= 7) & (curve_df["Portata_bin"] <= 100)]
-    high = curve_df[curve_df["Portata_bin"] > 100]
-
-    if not low.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=low["Portata_bin"],
-                y=low[col_name] * 100,
-                mode="lines",
-                line={"width": 2, "color": colors[0]},
-                name=label,
-                showlegend=True,
-            )
+    if curve_df.empty:
+        return
+    fig.add_trace(
+        go.Scatter(
+            x=curve_df["Portata_bin"],
+            y=curve_df[col_name] * 100,
+            mode="lines",
+            line={"width": 2, "color": colors[0]},
+            name=label,
+            showlegend=True,
         )
-    if not mid.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=mid["Portata_bin"],
-                y=mid[col_name] * 100,
-                mode="lines",
-                line={"width": 2, "color": colors[1]},
-                name=label,
-                showlegend=False,
-            )
-        )
-    if not high.empty:
-        fig.add_trace(
-            go.Scatter(
-                x=high["Portata_bin"],
-                y=high[col_name] * 100,
-                mode="lines",
-                line={"width": 2, "color": colors[0]},
-                name=label,
-                showlegend=False,
-            )
-        )
+    )
 
 
 def _plot_mean_segments(fig, mean_curve):
-    low = mean_curve[mean_curve["Portata_bin"] < 7]
-    mid = mean_curve[(mean_curve["Portata_bin"] >= 7) & (mean_curve["Portata_bin"] <= 100)]
-    high = mean_curve[mean_curve["Portata_bin"] > 100]
+    if mean_curve.empty:
+        return
+    has_outlier_col = "Rendimento_mean_is_outlier" in mean_curve.columns
+    if has_outlier_col:
+        inliers = mean_curve[mean_curve["Rendimento_mean_is_outlier"] == False]
+        outliers = mean_curve[mean_curve["Rendimento_mean_is_outlier"] == True]
+    else:
+        inliers = mean_curve
+        outliers = mean_curve.iloc[0:0]
 
-    if not low.empty:
+    if not inliers.empty:
         fig.add_trace(
             go.Scatter(
-                x=low["Portata_bin"],
-                y=low["Rendimento_mean"] * 100,
+                x=inliers["Portata_bin"],
+                y=inliers["Rendimento_mean"] * 100,
                 mode="lines",
-                line={"width": 3, "color": "#fecaca"},
+                line={"width": 3, "color": "#d62728"},
                 name="Media",
                 showlegend=True,
             )
         )
-    if not mid.empty:
+
+    if not outliers.empty:
         fig.add_trace(
             go.Scatter(
-                x=mid["Portata_bin"],
-                y=mid["Rendimento_mean"] * 100,
-                mode="lines",
-                line={"width": 3, "color": "#d62728"},
-                name="Media",
-                showlegend=False,
+                x=outliers["Portata_bin"],
+                y=outliers["Rendimento_mean"] * 100,
+                mode="markers",
+                marker={"size": 6, "color": "#fca5a5", "opacity": 0.6},
+                name="Media (outlier)",
+                showlegend=True,
             )
         )
-    if not high.empty:
+
+    if "Rendimento_mean_is_outlier" in mean_curve.columns:
+        candidates = mean_curve[
+            (mean_curve["Rendimento_mean_is_outlier"] == False)
+            & (mean_curve["Rendimento_mean"] >= 0)
+            & (mean_curve["Rendimento_mean"] <= 1)
+        ]
+    else:
+        candidates = mean_curve[(mean_curve["Rendimento_mean"] >= 0) & (mean_curve["Rendimento_mean"] <= 1)]
+
+    if not candidates.empty:
+        max_row = candidates.loc[candidates["Rendimento_mean"].idxmax()]
         fig.add_trace(
             go.Scatter(
-                x=high["Portata_bin"],
-                y=high["Rendimento_mean"] * 100,
-                mode="lines",
-                line={"width": 3, "color": "#fecaca"},
-                name="Media",
-                showlegend=False,
+                x=[max_row["Portata_bin"]],
+                y=[max_row["Rendimento_mean"] * 100],
+                mode="markers",
+                marker={
+                    "size": 14,
+                    "color": "#111827",
+                    "symbol": "circle-open",
+                    "line": {"width": 2, "color": "#111827"},
+                },
+                name="Max rendimento medio",
+                showlegend=True,
             )
         )
