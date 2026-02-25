@@ -496,3 +496,175 @@ Field meanings:
 - `flow`: reserved list for flow values (currently unused).
 - `yield`: reserved list for efficiency values (currently unused).
 
+---
+
+## Curva di Rendimento: Problema Reale e Funzione di Fit
+
+### Problema che stiamo risolvendo
+I dati reali di rendimento (η) in funzione della portata (Q) sono rumorosi e non seguono una forma perfettamente simmetrica:
+- a basse portate la curva cresce rapidamente
+- vicino al picco si stabilizza
+- a portate alte scende piu lentamente
+
+Per il portale serve una **funzione continua e stabile** che approssimi i dati reali e permetta:
+- simulazioni rapide (dato Q, ottengo η)
+- confronti tra impianti
+- grafici puliti e interpretabili
+
+### Funzione originale (simmetrica)
+```
+?(x) = ?_max * (1 - a (x - 1)^2)
+```
+dove:
+- `x = Q / Q_max`
+- `?_max` = rendimento massimo
+- `a` = coefficiente di curvatura
+
+Questa formula e' semplice ma troppo rigida: impone simmetria e tende a partire da valori troppo alti.
+
+### Funzione aggiornata (asimmetrica, picco a x=1)
+Per seguire meglio i dati reali, usiamo una versione **asimmetrica** a sinistra/destra del picco:
+```
+Left (x<=1):
+? = ?0 + (?_max - ?0) * (1 - aL * |x - 1|^kL)
+
+Right (x>1):
+? = ?0 + (?_max - ?0) * (1 - aR * |x - 1|^kR)
+```
+
+Interpretazione dei parametri:
+- `?0`: rendimento di base (stimato dal 5? percentile)
+- `?_max`: media del top 5% dei rendimenti (robusta al rumore)
+- `Q_max`: portata corrispondente al picco di rendimento osservato
+- `aL`, `aR`: curvatura a sinistra e destra del picco
+- `kL`, `kR`: esponenti che controllano quanto rapidamente la curva scende
+
+### Funzione aggiornata (asimmetrica, x normalizzato 0..1 con picco interno)
+Per avere un asse x normalizzato tra 0 e 1, usiamo:
+```
+x = (Q - Q_min) / (Q_max - Q_min)
+```
+Il picco non e' in x=1, ma in un valore interno `x0`:
+```
+x0 = argmax(?) nella scala normalizzata
+```
+La formula diventa:
+```
+Left (x<=x0):
+? = ?0 + (?_max - ?0) * (1 - aL * |x - x0|^kL)
+
+Right (x>x0):
+? = ?0 + (?_max - ?0) * (1 - aR * |x - x0|^kR)
+```
+
+Questa versione permette:
+- range 0..1 sull'asse x
+- picco nella posizione reale dei dati
+- confronto diretto tra impianti con scale normalizzate
+
+### Calcolo dettagliato delle curve di fit
+
+**Dati in ingresso**
+- Si usa la curva media: `Portata_bin` (Q) e `Rendimento_mean` (?) dal CSV `rendimento_medio_per_turbine_pelton.csv`.
+- Vengono esclusi gli outlier (`Rendimento_mean_is_outlier == True`) e i valori non fisici (? < 0 o ? > 1).
+
+**Normalizzazione dell'asse x (0..1)**
+```
+Q_min = min(Q)
+Q_max = max(Q)
+x = (Q - Q_min) / (Q_max - Q_min)
+x0 = argmax(?) nella scala normalizzata
+```
+
+**Stima di ?_max e ?0**
+- `?_max` = media del **top 5%** dei rendimenti (piu' robusto del max assoluto)
+- `?0` = **5? percentile** dei rendimenti (base della curva)
+
+**Curva simmetrica**
+Si impone una forma simmetrica attorno al picco `x0`:
+```
+? = ?0 + (?_max - ?0) * (1 - a (x - x0)^2)
+```
+Il coefficiente `a` si calcola con una formula chiusa:
+```
+z = (x - x0)
+b = ? [ z^2 * (?_max - ?) ] / ? [ z^4 ]
+a = b / (?_max - ?0)
+```
+
+**Curva asimmetrica (sinistra/destra)**
+La versione asimmetrica permette due curvature diverse:
+```
+Left (x<=x0):
+? = ?0 + (?_max - ?0) * (1 - aL * |x - x0|^kL)
+
+Right (x>x0):
+? = ?0 + (?_max - ?0) * (1 - aR * |x - x0|^kR)
+```
+I parametri `kL`, `kR` vengono scelti con una **grid search** nel range [2..7] con step 0.25.
+Per ogni coppia (kL, kR) si calcolano `aL` e `aR` con formula chiusa:
+```
+zL = |x - x0|^kL   (solo x<=x0)
+zR = |x - x0|^kR   (solo x>x0)
+
+bL = ? [ zL * (?_max - ?) ] / ? [ zL^2 ]
+bR = ? [ zR * (?_max - ?) ] / ? [ zR^2 ]
+
+aL = bL / (?_max - ?0)
+aR = bR / (?_max - ?0)
+```
+La coppia (kL, kR) che minimizza l'errore quadratico totale viene selezionata.
+
+---
+
+## Flusso Dati Rendimento/Potenza (Portale)
+
+Questa sezione descrive come le varie parti (frontend, backend, DB) interagiscono per mostrare rendimento e potenza nel portale.
+
+### 1) Frontend
+- La pagina del misuratore carica `charts.js` e `rendimento.js`.
+- `rendimento.js` legge `id_misuratore` dal canvas (attributo `data-misuratore`).
+- Fa una chiamata HTTP:
+  ```
+  /portale/api/rendimento-potenza/?id_misuratore=...
+  ```
+
+### 2) Backend (Django)
+- `urls.py` mappa l'endpoint su `rendimento_potenza_api`.
+- La view:
+  - valida `id_misuratore`
+  - calcola **media portata ultimi 30 min**
+  - legge **parametri di fit** della turbina
+  - calcola `η` e `P`
+  - ritorna JSON con valori numerici
+
+Esempio risposta:
+```
+{
+  "flow_ls_avg_30m": 12.3,
+  "eta": 0.74,
+  "power_kw": 26.6,
+  "head_m": 183,
+  "x": 0.31
+}
+```
+
+### 3) Database
+Il backend legge da:
+- `tab_measurements_clean` (portata ultimi 30 min)
+- `tab_misuratori` (nome impianto)
+- `tab_impianti`, `tab_turbine`, `tab_turbina_parametri` (parametri fit)
+
+### 4) Frontend aggiorna UI
+- `rendimento.js` aggiorna i campi della tabella:
+  - Rendimento medio 30 min
+  - Potenza attesa 30 min
+  - Salto H (default DB, modificabile)
+- Se l'utente cambia H, la potenza viene ricalcolata lato client.
+
+### Perche serve nel portale
+Con questa funzione l'utente puo:
+- inserire una portata Q e ottenere un rendimento stimato
+- calcolare la potenza attesa (P = ρ * g * H * Q * η)
+- confrontare curve di impianti diversi con una logica coerente
+

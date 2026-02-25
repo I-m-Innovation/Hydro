@@ -744,6 +744,9 @@ sia con .facility-panel/.facility-grid se li usi nel template.
   overflow: hidden;
   background: var(--color-surface);
 }
+.facility-table input {
+  width: 5rem;
+}
 
 .facility-table th,
 .facility-table td {

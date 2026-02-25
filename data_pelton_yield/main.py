@@ -6,7 +6,7 @@ from constants import CHARTS_DIR, LOCAL_CHARTS_DIR
 from compute import compute_h_mean, build_h_calculated
 from io_data import load_and_prepare
 from plots import plot_h_calculated_grid
-from curves import build_and_save_mean_curves
+from curves import build_and_save_mean_curves, build_and_save_mean_fit_plot
 
 
 def main():
@@ -66,6 +66,14 @@ def main():
     print("[3/3] Building and saving mean curves to both directories...")
     build_and_save_mean_curves(calc_paths, CHARTS_DIR)
     build_and_save_mean_curves(calc_paths, LOCAL_CHARTS_DIR)
+    build_and_save_mean_fit_plot(
+        os.path.join("csv_all", "curves", "rendimento_medio_per_turbine_pelton.csv"),
+        CHARTS_DIR,
+    )
+    build_and_save_mean_fit_plot(
+        os.path.join("csv_all", "curves", "rendimento_medio_per_turbine_pelton.csv"),
+        LOCAL_CHARTS_DIR,
+    )
 
 
 if __name__ == "__main__":

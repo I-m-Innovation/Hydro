@@ -1,5 +1,6 @@
 import os
 import pandas
+import numpy as np
 import hampel as hampel
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -164,6 +165,238 @@ def build_and_save_mean_curves(calc_paths, charts_dir):
         linewidth=2,
     )
     fig_all.write_html(os.path.join(charts_dir, "rendimento_curve_quattro.html"))
+
+
+def build_and_save_mean_fit_plot(curves_csv_path, charts_dir):
+    """
+    Costruisce un grafico che confronta la curva media con:
+    - formula originale simmetrica
+    - formula asimmetrica (lato sinistro/destro con parametri diversi)
+
+    Note:
+    - l'asse x e' normalizzato in [0, 1]: x = (Q - Q_min) / (Q_max - Q_min)
+    - x0 e' la posizione del picco nella scala normalizzata
+    - eta_max e' stimato come media del top 5% dei rendimenti.
+    """
+    if not os.path.exists(curves_csv_path):
+        return
+
+    df = pandas.read_csv(curves_csv_path)
+    required = {"Portata_bin", "Rendimento_mean"}
+    if not required.issubset(df.columns):
+        return
+
+    if "Rendimento_mean_is_outlier" in df.columns:
+        df = df[df["Rendimento_mean_is_outlier"] == False]
+
+    df = df[(df["Rendimento_mean"] >= 0) & (df["Rendimento_mean"] <= 1)]
+    df = df.dropna(subset=["Portata_bin", "Rendimento_mean"])
+    if df.empty:
+        return
+
+    Q = df["Portata_bin"].to_numpy(dtype=float)
+    eta = df["Rendimento_mean"].to_numpy(dtype=float)
+    # usa la media del top 5% dei rendimenti per un eta_max piu' robusto
+    top_n = max(1, int(len(eta) * 0.05))
+    eta_sorted = np.sort(eta)
+    eta_max = float(np.nanmean(eta_sorted[-top_n:]))
+    # stima eta0 come percentile basso dei rendimenti per riflettere la coda sinistra
+    eta0 = float(np.nanpercentile(eta, 5))
+
+    # normalizzazione principale: x in [0,1] con picco in x0
+    Q_min = float(np.nanmin(Q))
+    Q_max_measured = float(np.nanmax(Q))
+    if Q_max_measured <= Q_min:
+        return
+    x_base = (Q - Q_min) / (Q_max_measured - Q_min)
+    x_peak = float(x_base[np.nanargmax(eta)])
+
+    dx = (x_base - x_peak)
+    denom = np.sum(dx ** 4)
+    if denom <= 0:
+        return
+    b = np.sum((dx ** 2) * (eta_max - eta)) / denom
+    denom_a = (eta_max - eta0)
+    a = float(b / denom_a) if denom_a > 0 else 0.0
+
+    left_mask = x_base <= x_peak
+    right_mask = x_base > x_peak
+
+    # grid search for kL, kR (range 2..7 step 0.25)
+    k_values = np.arange(2.0, 7.0001, 0.25)
+    best_err = None
+    k_left = 4.0
+    k_right = 2.0
+    a_left = a
+    a_right = a
+
+    if denom_a > 0:
+        for kL in k_values:
+            if np.any(left_mask):
+                z_left = np.abs(x_base[left_mask] - x_peak) ** kL
+                denom_left = np.sum(z_left ** 2)
+                if denom_left <= 0:
+                    continue
+                b_left = np.sum(z_left * (eta_max - eta[left_mask])) / denom_left
+                aL = float(b_left / denom_a)
+            else:
+                aL = a
+
+            for kR in k_values:
+                if np.any(right_mask):
+                    z_right = np.abs(x_base[right_mask] - x_peak) ** kR
+                    denom_right = np.sum(z_right ** 2)
+                    if denom_right <= 0:
+                        continue
+                    b_right = np.sum(z_right * (eta_max - eta[right_mask])) / denom_right
+                    aR = float(b_right / denom_a)
+                else:
+                    aR = a
+
+                dx = np.abs(x_base - x_peak)
+                eta_pred = eta0 + (eta_max - eta0) * (
+                    1
+                    - np.where(
+                        x_base <= x_peak,
+                        aL * (dx ** kL),
+                        aR * (dx ** kR),
+                    )
+                )
+                err = float(np.sum((eta_pred - eta) ** 2))
+                if best_err is None or err < best_err:
+                    best_err = err
+                    k_left, k_right = float(kL), float(kR)
+                    a_left, a_right = float(aL), float(aR)
+
+    x_fit_main = np.linspace(0.0, 1.0, 200)
+
+    dx_fit = np.abs(x_fit_main - x_peak)
+    eta_fit_asym = eta0 + (eta_max - eta0) * (
+        1
+        - np.where(
+            x_fit_main <= x_peak,
+            a_left * (dx_fit ** k_left),
+            a_right * (dx_fit ** k_right),
+        )
+    )
+
+    fig = go.Figure()
+    fig.add_trace(
+        go.Scatter(
+            x=x_base,
+            y=eta,
+            mode="markers",
+            marker={"size": 6, "color": "#2563eb", "opacity": 0.7},
+            name="Dati (media)",
+        )
+    )
+    max_idx = int(np.nanargmax(eta))
+    fig.add_trace(
+        go.Scatter(
+            x=[x_base[max_idx]],
+            y=[eta[max_idx]],
+            mode="markers",
+            marker={
+                "size": 14,
+                "color": "#111827",
+                "symbol": "circle-open",
+                "line": {"width": 2, "color": "#111827"},
+            },
+            name="Max rendimento",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_fit_main,
+            y=eta0 + (eta_max - eta0) * (1 - a * (x_fit_main - x_peak) ** 2),
+            mode="lines",
+            line={"width": 3, "color": "#fca5a5"},
+            opacity=0.5,
+            name="Fit η(x) originale",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=x_fit_main,
+            y=eta_fit_asym,
+            mode="lines",
+            line={"width": 3, "color": "#16a34a"},
+            name=f"Fit η(x) asimmetrica, kL={int(k_left)}, kR={int(k_right)}",
+        )
+    )
+    fig.update_layout(
+        title_text="Fit curva rendimento media: formula originale vs asimmetrica",
+        height=620,
+        width=900,
+        margin={"l": 80, "r": 80, "t": 70, "b": 190},
+    )
+    fig.update_xaxes(
+        title_text="x = (Q - Q_min) / (Q_max - Q_min)",
+        range=[0, 1],
+    )
+    fig.update_yaxes(title_text="η", range=[0, 1])
+
+    annotation = (
+        "Left (x<=x0): η = η0 + (η_max - η0) * (1 - aL * |x - x0|"
+        "<sup>kL</sup>)<br>"
+        "Right (x>x0): η = η0 + (η_max - η0) * (1 - aR * |x - x0|"
+        "<sup>kR</sup>)<br>"
+        f"η0={eta0:.4f} (base, p5) | η_max={eta_max:.4f} (media top 5%) | "
+        f"x0={x_peak:.2f} (picco normalizzato)<br>"
+        f"aL={a_left:.4f} | kL={k_left:.2f} | aR={a_right:.4f} | kR={k_right:.2f}"
+    )
+
+    fig.add_annotation(
+        x=0.0,
+        y=-0.32,
+        xref="paper",
+        yref="paper",
+        text=annotation,
+        showarrow=False,
+        align="left",
+        xanchor="left",
+        yanchor="top",
+        font={"size": 11, "color": "#111827"},
+        bgcolor="rgba(255,255,255,0.7)",
+        bordercolor="#e5e7eb",
+        borderwidth=1,
+    )
+
+    os.makedirs(charts_dir, exist_ok=True)
+    fig.write_html(os.path.join(charts_dir, "rendimento_fit_gpt.html"))
+
+    print("[FIT PARAMS]")
+    print(f"eta0={eta0:.6f}")
+    print(f"eta_max={eta_max:.6f}")
+    print(f"x0={x_peak:.6f}")
+    print(f"aL={a_left:.6f}")
+    print(f"aR={a_right:.6f}")
+    print(f"kL={k_left:.3f}")
+    print(f"kR={k_right:.3f}")
+    print(f"Q_min={Q_min:.6f}")
+    print(f"Q_max={Q_max_measured:.6f}")
+
+    # export 400-point curve for DB import (x, eta) with id_turbina=1
+    x_points = np.linspace(0.0, 1.0, 400)
+    dx_points = np.abs(x_points - x_peak)
+    eta_points = eta0 + (eta_max - eta0) * (
+        1
+        - np.where(
+            x_points <= x_peak,
+            a_left * (dx_points ** k_left),
+            a_right * (dx_points ** k_right),
+        )
+    )
+    curve_points = pandas.DataFrame(
+        {
+            "id_turbina": 1,
+            "x": x_points.round(6),
+            "eta": eta_points.round(6),
+        }
+    )
+    curve_points_path = os.path.join("csv_all", "curves", "turbina_curve_points.csv")
+    os.makedirs(os.path.dirname(curve_points_path), exist_ok=True)
+    curve_points.to_csv(curve_points_path, index=False)
 
 
 def _plot_curve_segments(fig, curve_df, col_name, label, colors):
