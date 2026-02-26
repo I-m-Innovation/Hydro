@@ -65,6 +65,7 @@ document.addEventListener("DOMContentLoaded", () => {
             try {
                 const url = `/portale/api/rendimento-potenza/?id_misuratore=${encodeURIComponent(idMisuratore)}`;
                 const data = await fetchJsonWithRetry(url, 2, 1000);
+                const isStale = Boolean(data?.is_stale);
                 const etaVal = Number(data?.eta);
                 const powerVal = Number(data?.power_kw);
                 const headVal = Number(data?.head_m);
@@ -72,6 +73,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
                 lastEta = Number.isFinite(etaVal) ? etaVal : null;
                 lastFlowLs = Number.isFinite(flowVal) ? flowVal : null;
+
+                if (isStale) {
+                    etaEl.textContent = "No data";
+                    powerEl.textContent = "No data";
+                    return;
+                }
 
                 etaEl.textContent = Number.isFinite(etaVal) ? formatNumber(etaVal, 3) : "--";
                 powerEl.textContent = Number.isFinite(powerVal) ? formatNumber(powerVal, 2) : "--";

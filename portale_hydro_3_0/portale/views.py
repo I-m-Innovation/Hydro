@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.db import connection
 from django.db.models import Max
+from django.utils import timezone
 # from django.contrib.auth.decorators import login_required
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
@@ -599,13 +600,24 @@ def rendimento_potenza_api(request):
         return JsonResponse({"error": error}, status=400)
 
     latest_ts, flow_ls_avg = _get_latest_flow_avg_30m(id_misuratore)
-    if flow_ls_avg is None:
+    if latest_ts is None:
         return JsonResponse(
             {
                 "flow_ls_avg_30m": None,
                 "eta": None,
                 "power_kw": None,
                 "head_m": None,
+                "is_stale": True,
+            }
+        )
+    if latest_ts < (timezone.now() - timedelta(minutes=30)):
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": None,
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": True,
             }
         )
 
@@ -617,6 +629,7 @@ def rendimento_potenza_api(request):
                 "eta": None,
                 "power_kw": None,
                 "head_m": None,
+                "is_stale": False,
             }
         )
 
@@ -631,5 +644,6 @@ def rendimento_potenza_api(request):
             "head_m": computed["head_m"],
             "x": computed["x"],
             "turbina_id": computed["turbina_id"],
+            "is_stale": False,
         }
     )
