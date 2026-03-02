@@ -1,0 +1,9 @@
+{% load static %}
+
+<canvas id="curvaRendimentoChart" data-nome-turbina="{{ nome_turbina }}"
+style="max-width: 1024px;max-height: 720px;"></canvas>
+
+<!-- Load libraries from CDN -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<script type="module" src="{% static 'portale/js/curva_di_rendimento_per_turbina.js' %}"></script>

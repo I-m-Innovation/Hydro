@@ -49,6 +49,7 @@
             <h3>Statistiche Portata </h3>
             <table class="facility-table">
               <tbody>
+                {% if misuratore.name == 'Trebisacce' %}
                 <tr>
                   <th scope="row">Rendimento medio (ultimi 30 min)</th>
                   <td><strong id="eta-30m">--</strong></td>
@@ -73,6 +74,7 @@
                     />
                   </td>
                 </tr>
+                {% endif %}
                 <tr>
                   <th scope="row">Unita di misura</th>
                   <td colspan="2"><strong>l/s</strong></td>
@@ -108,44 +110,6 @@
           </div>
         </div>
 
-        <!-- Dati impianto -->
-        {% comment %}
-        <div class="facility-info">
-          <h3>Informazioni Impianto (misuratore)</h3>
-          <table class="facility-table">
-            <tbody>
-              <tr>
-                <th scope="row">Citta</th>
-                <td>-</td>
-              </tr>
-              <tr>
-                <th scope="row">CAP</th>
-                <td>-</td>
-              </tr>
-              <tr>
-                <th scope="row">Paese</th>
-                <td>-</td>
-              </tr>
-              <tr>
-                <th scope="row">Coordinate</th>
-                <td>-</td>
-              </tr>
-              <tr>
-                <th scope="row">Stato</th>
-                <td class="status-off">Non disponibile</td>
-              </tr>
-              <tr>
-                <th scope="row">Creato il</th>
-                <td>-</td>
-              </tr>
-              <tr>
-                <th scope="row">Aggiornato il</th>
-                <td>-</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        {% endcomment %}
       </div>
 
       <!-- Right column: Plot -->
@@ -169,6 +133,11 @@
                 <button class="range-btn" type="button" data-range="6m">6m</button>
                 <button class="range-btn" type="button" data-range="1y">1y</button>
                 <button class="range-btn" type="button" data-range="all">all</button>
+                {% if misuratore.name == 'Trebisacce' or misuratore.name == 'Gateway 1' %}
+                  <button type="button" class="btn-efficiency-popup efficiency-btn-separated" data-turbina="Pelton" aria-label="Mostra curva di rendimento">
+                    📈 Curva di rendimento
+                  </button>
+                {% endif %}
               </div>
               <div class="chart-actions">
                 <button
@@ -296,6 +265,27 @@
     </div>
     {% endif %}
   </div>
+  
+  {% comment %} hidden chart for the rendimento curve {% endcomment %}
+  <div id="modal-curva-di-rendimento" class="popup-overlay is-hidden">
+    <div class="popup-simple">
+      <button class="popup-close-simple" aria-label="Chiudi">&times;</button>
+      <canvas 
+        id="curvaRendimentoChart" 
+        data-nome-turbina="Pelton">
+      </canvas>
+    </div>
+  </div>
+  </div>
 </main>
+
+<!-- CDN libraries -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<!-- Our efficiency chart script -->
+<script src="{% static 'portale/js/curva_di_rendimento_per_turbina.js' %}"></script>
+<!-- Popup management script -->
+<script src="{% static 'portale/js/popup_efficiency.js' %}"></script>
+
 
 

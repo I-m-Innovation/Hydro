@@ -1,4 +1,14 @@
+```
+questo script gestisce il pannello di rendimento e potenza, recuperando i dati da un endpoint API 
+e aggiornando dinamicamente i valori visualizzati. 
+Utilizza un meccanismo di retry esponenziale per gestire eventuali errori di rete 
+o server, e aggiorna i dati ogni 5 minuti.
+```
+
+
 document.addEventListener("DOMContentLoaded", () => {
+    
+    
     const POLL_INTERVAL_MS = 60000*5; // 5 minutes
 
     const formatNumber = (value, decimals = 2) => {

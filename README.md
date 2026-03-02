@@ -551,10 +551,10 @@ x0 = argmax(?) nella scala normalizzata
 La formula diventa:
 ```
 Left (x<=x0):
-? = ?0 + (?_max - ?0) * (1 - aL * |x - x0|^kL)
+eta = eta_0 + (eta_max - eta_0) * (1 - aL * |x - x0|^kL)
 
 Right (x>x0):
-? = ?0 + (?_max - ?0) * (1 - aR * |x - x0|^kR)
+eta = eta_0 + (eta_max - eta_0) * (1 - aR * |x - x0|^kR)
 ```
 
 Questa versione permette:

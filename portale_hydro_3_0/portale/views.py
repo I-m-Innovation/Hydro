@@ -647,3 +647,39 @@ def rendimento_potenza_api(request):
             "is_stale": False,
         }
     )
+
+
+def curva_di_rendimento_turbina(request, nome_turbina):
+    """
+    Return dataset as {"curve_points": {"x": [...], "eta": [...]}} 
+    where x and eta are lists of floats corresponding to the curve points 
+    for the turbine with the given name.
+    """
+    if(nome_turbina is None or len(nome_turbina.strip()) == 0):
+        return JsonResponse({"error": "nome_turbina is required"}, status=400)
+    nome_turbina = nome_turbina.strip()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT x, eta
+            FROM hydro.tab_turbina_curve_points as tbcp
+            JOIN hydro.tab_tipologia_turbina as ttt ON tbcp.id_turbina = ttt.id
+            WHERE ttt.nome = %s
+            """,
+            [nome_turbina]
+        )
+        rows = cursor.fetchall() # dovrebbero essere ~400 righe per ogni turbina
+    
+    if not rows:  # Check first, process after
+        return JsonResponse({"error": f"No curve points found for this turbine with name {nome_turbina}"}, status=404)
+    
+    x = [float(row[0]) for row in rows]
+    eta = [float(row[1]) for row in rows]
+    return JsonResponse({"curve_points": {"x": x, "eta": eta}}, status=200)
+    
+    
+def test_canvas(request, nome_tipologia_turbina):
+    return render(request, "portale/includes/test_canvas.html", {
+        "title": f"Test Canvas - {nome_tipologia_turbina}",
+        "nome_turbina": nome_tipologia_turbina  # Pass actual parameter value
+        })
