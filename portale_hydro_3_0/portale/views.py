@@ -6,6 +6,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.db import connection
 from django.db.models import Max
+from django.utils import timezone
 # from django.contrib.auth.decorators import login_required
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
@@ -468,3 +469,217 @@ def led_status_api(request):
         ]
     }
     return JsonResponse(data)
+
+
+def _get_latest_flow_avg_30m(id_misuratore):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT MAX(data_misurazione)
+            FROM hydro.tab_measurements_clean
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        latest_ts = cursor.fetchone()[0]
+        if not latest_ts:
+            return None, None
+
+        cutoff = latest_ts - timedelta(minutes=30)
+        cursor.execute(
+            """
+            SELECT AVG(flow_ls_smoothed)
+            FROM hydro.tab_measurements_clean
+            WHERE id_misuratore = %s
+                AND data_misurazione >= %s
+                AND data_misurazione <= %s
+            """,
+            [id_misuratore, cutoff, latest_ts],
+        )
+        flow_ls_avg = cursor.fetchone()[0]
+
+    return latest_ts, flow_ls_avg
+
+
+def _get_turbina_params_for_misuratore(id_misuratore):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT name
+            FROM hydro.tab_misuratori
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        impianto_name = row[0]
+        cursor.execute(
+            """
+            SELECT t.id,
+                   t.salto_netto_m,
+                   t.salto_nominale_m,
+                   p.eta0,
+                   p.eta_max,
+                   p.x0,
+                   p.aL,
+                   p.aR,
+                   p.kL,
+                   p.kR,
+                   p.q_min_ls,
+                   p.q_max_ls
+            FROM hydro.tab_turbine t
+            JOIN hydro.tab_impianti i ON i.id = t.id_impianto
+            JOIN hydro.tab_turbina_parametri p ON p.id_turbina = t.id
+            WHERE i.nome = %s
+              AND p.is_active = TRUE
+            ORDER BY t.id
+            LIMIT 1
+            """,
+            [impianto_name],
+        )
+        return cursor.fetchone()
+
+
+def _compute_eta_potenza(flow_ls_avg, params):
+    (
+        turbina_id,
+        salto_netto_m,
+        salto_nominale_m,
+        eta0,
+        eta_max,
+        x0,
+        aL,
+        aR,
+        kL,
+        kR,
+        q_min_ls,
+        q_max_ls,
+    ) = params
+
+    head_m = float(salto_netto_m) if salto_netto_m is not None else float(salto_nominale_m or 0)
+    denom_q = float(q_max_ls - q_min_ls) if q_max_ls is not None and q_min_ls is not None else 0.0
+    if denom_q <= 0:
+        return {
+            "eta": None,
+            "power_kw": None,
+            "head_m": head_m if head_m > 0 else None,
+            "x": None,
+            "turbina_id": turbina_id,
+        }
+
+    x = (flow_ls_avg - float(q_min_ls)) / denom_q
+    x = max(0.0, min(1.0, x))
+
+    if x <= float(x0):
+        eta = float(eta0) + (float(eta_max) - float(eta0)) * (
+            1 - float(aL) * abs(x - float(x0)) ** float(kL)
+        )
+    else:
+        eta = float(eta0) + (float(eta_max) - float(eta0)) * (
+            1 - float(aR) * abs(x - float(x0)) ** float(kR)
+        )
+
+    q_m3s = flow_ls_avg / 1000.0
+    power_kw = 9.81 * head_m * q_m3s * eta if head_m > 0 else None
+
+    return {
+        "eta": eta,
+        "power_kw": power_kw,
+        "head_m": head_m if head_m > 0 else None,
+        "x": x,
+        "turbina_id": turbina_id,
+    }
+
+
+def rendimento_potenza_api(request):
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    latest_ts, flow_ls_avg = _get_latest_flow_avg_30m(id_misuratore)
+    if latest_ts is None:
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": None,
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": True,
+            }
+        )
+    if latest_ts < (timezone.now() - timedelta(minutes=30)):
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": None,
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": True,
+            }
+        )
+
+    params = _get_turbina_params_for_misuratore(id_misuratore)
+    if not params:
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": float(flow_ls_avg),
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": False,
+            }
+        )
+
+    flow_ls_avg = float(flow_ls_avg)
+    computed = _compute_eta_potenza(flow_ls_avg, params)
+
+    return JsonResponse(
+        {
+            "flow_ls_avg_30m": flow_ls_avg,
+            "eta": computed["eta"],
+            "power_kw": computed["power_kw"],
+            "head_m": computed["head_m"],
+            "x": computed["x"],
+            "turbina_id": computed["turbina_id"],
+            "is_stale": False,
+        }
+    )
+
+
+def curva_di_rendimento_turbina(request, nome_turbina):
+    """
+    Return dataset as {"curve_points": {"x": [...], "eta": [...]}} 
+    where x and eta are lists of floats corresponding to the curve points 
+    for the turbine with the given name.
+    """
+    if(nome_turbina is None or len(nome_turbina.strip()) == 0):
+        return JsonResponse({"error": "nome_turbina is required"}, status=400)
+    nome_turbina = nome_turbina.strip()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT x, eta
+            FROM hydro.tab_turbina_curve_points as tbcp
+            JOIN hydro.tab_tipologia_turbina as ttt ON tbcp.id_turbina = ttt.id
+            WHERE ttt.nome = %s
+            """,
+            [nome_turbina]
+        )
+        rows = cursor.fetchall() # dovrebbero essere ~400 righe per ogni turbina
+    
+    if not rows:  # Check first, process after
+        return JsonResponse({"error": f"No curve points found for this turbine with name {nome_turbina}"}, status=404)
+    
+    x = [float(row[0]) for row in rows]
+    eta = [float(row[1]) for row in rows]
+    return JsonResponse({"curve_points": {"x": x, "eta": eta}}, status=200)
+    
+    
+def test_canvas(request, nome_tipologia_turbina):
+    return render(request, "portale/includes/test_canvas.html", {
+        "title": f"Test Canvas - {nome_tipologia_turbina}",
+        "nome_turbina": nome_tipologia_turbina  # Pass actual parameter value
+        })

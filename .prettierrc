@@ -23,7 +23,8 @@
       "files": ["*.js"],
       "options": {
         "singleQuote": true,
-        "semi": true
+        "semi": true,
+        "tabWidth": 2
       }
     },
     {

@@ -1,0 +1,29 @@
+{
+  "DBCAN": {
+    "name": "Canaletta",
+    "path": "csv_all\\raw\\DBCAN.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBCAN_filtered_H_fixed.csv",
+    "head": 117,
+    "flow": [],
+    "yield": [],
+    "estimated_head": 113.90126243705848
+  },
+  "DBPAR": {
+    "name": "Partitore",
+    "path": "csv_all\\raw\\DBPAR.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBPAR_filtered_H_fixed.csv",
+    "head": 346.24,
+    "flow": [],
+    "yield": [],
+    "estimated_head": 274.8273649731187
+  },
+  "DBST": {
+    "name": "San Teodoro",
+    "path": "csv_all\\raw\\DBST.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBST_filtered_H_fixed.csv",
+    "head": 347.24,
+    "flow": [],
+    "yield": [],
+    "estimated_head": 276.4793191637426
+  }
+}

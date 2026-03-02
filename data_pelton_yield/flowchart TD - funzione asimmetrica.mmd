@@ -1,0 +1,70 @@
+flowchart TD
+    Start([Funzione Asimmetrica per Fitting]) --> LoadData[/Carica dati curva rendimento/]
+    LoadData --> NormData["Normalizzazione x in [0,1]"]
+    
+    NormData --> CalcParams[Calcola parametri base]
+    CalcParams --> CalcEta0["η0 = percentile(5%)"]
+    CalcParams --> CalcEtaMax["η_max = media(top 5%)"]
+    CalcParams --> FindPeak["x_peak = posizione picco"]
+    
+    CalcEta0 --> GridSearch{Grid Search Ottimizzazione}
+    CalcEtaMax --> GridSearch
+    FindPeak --> GridSearch
+    
+    GridSearch --> TestKL["Test k_left in [2, 7]"]
+    GridSearch --> TestKR["Test k_right in [2, 7]"]
+    
+    TestKL --> CalcLeft["Calcolo lato sinistro:<br/>a_left dal fit LSQ"]
+    TestKR --> CalcRight["Calcolo lato destro:<br/>a_right dal fit LSQ"] 
+    
+    CalcLeft --> EvaluateFunc[Valuta funzione completa]
+    CalcRight --> EvaluateFunc
+    
+    EvaluateFunc --> AsymFunc["η(x) = η0 + (η_max - η0) × (1 - f(x))"]
+    AsymFunc --> CheckSide{"x ≤ x_peak?"}
+    
+    CheckSide -->|Sì| LeftSide["f(x) = a_left × |x - x_peak|^k_left"]
+    CheckSide -->|No| RightSide["f(x) = a_right × |x - x_peak|^k_right"]
+    
+    LeftSide --> CalcError[Calcola errore MSE]
+    RightSide --> CalcError
+    
+    CalcError --> BestFit{Migliore fit?}
+    BestFit -->|No| GridSearch
+    BestFit -->|Sì| SaveParams[Salva parametri ottimali]
+    
+    SaveParams --> GenerateCurve[Genera curva finale]
+    GenerateCurve --> PlotResult[Visualizza confronto:<br/>Originale vs Asimmetrica]
+    
+    %% Sottosezione matematica
+    subgraph MathDetails [Dettagli Matematici]
+        Formula1["Forma generale:<br/>η(x) = η0 + (η_max - η0) × (1 - f(x))"]
+        Formula2["Funzione asimmetrica f(x):"]
+        Formula3["Lato sinistro (x ≤ x_peak):<br/>f(x) = a_left × d^k_left"]
+        Formula4["Lato destro (x > x_peak):<br/>f(x) = a_right × d^k_right"]
+        Formula5["dove d = |x - x_peak|"]
+        
+        Formula1 --> Formula2
+        Formula2 --> Formula3
+        Formula2 --> Formula4
+        Formula3 --> Formula5
+        Formula4 --> Formula5
+    end
+    
+    %% Connessioni ai dettagli
+    AsymFunc -.-> Formula1
+    LeftSide -.-> Formula3
+    RightSide -.-> Formula4
+    
+    %% Stili
+    classDef inputData fill:#e3f2fd
+    classDef mathCalc fill:#f3e5f5
+    classDef optimization fill:#e8f5e8
+    classDef formula fill:#fff3e0
+    classDef output fill:#fce4ec
+    
+    class LoadData,NormData inputData
+    class CalcParams,CalcEta0,CalcEtaMax,FindPeak,CalcLeft,CalcRight,CalcError mathCalc
+    class GridSearch,TestKL,TestKR,BestFit optimization
+    class AsymFunc,LeftSide,RightSide,Formula1,Formula2,Formula3,Formula4,Formula5 formula
+    class SaveParams,GenerateCurve,PlotResult output
