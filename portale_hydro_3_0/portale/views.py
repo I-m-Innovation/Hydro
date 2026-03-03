@@ -683,3 +683,13 @@ def test_canvas(request, nome_tipologia_turbina):
         "title": f"Test Canvas - {nome_tipologia_turbina}",
         "nome_turbina": nome_tipologia_turbina  # Pass actual parameter value
         })
+    
+    
+
+def misuratori_index(request): 
+    misuratori = tab_misuratori.objects.all()
+    context = {
+        "misuratori": misuratori,
+        "title": "Hydro 3.0",
+    }
+    return render(request, "portale/misuratori_index.html", context)

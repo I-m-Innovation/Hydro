@@ -13,7 +13,7 @@
       "options": {
         "parser": "html",
         "printWidth": 120,
-        "tabWidth": 2,
+        "tabWidth": 3,
         "singleQuote": false,
         "bracketSameLine": false,
         "htmlWhitespaceSensitivity": "ignore"

@@ -1,0 +1,64 @@
+<div class="misuratori-welcome">
+    <h2>Benvenuto,</h2>
+    <ul>
+        <li>Qui trovi l’elenco degli impianti per cui sono disponibili dati provenienti dai sensori e da noi elaborati.</li>
+        <li>Gli impianti sono suddivisi in due categorie: <strong>Attivi</strong> e <strong>Non Attivi</strong>.</li>
+        <li>Al momento solo l’impianto <strong>"Trebisacce"</strong> dispone di dati in tempo reale.</li>
+        <li>Gli altri impianti mostrano esclusivamente dati storici.</li>
+    </ul>
+</div>
+
+<div class="misuratori-grid">
+    {% comment %} misuratori attivi - prima colonna seconda riga {% endcomment %}
+
+    <section id="section-1" class="misuratori-col attivi">
+        <h2 id="misuratori-attivi-title" class="misuratori-title">Impianti Attivi</h2>
+        <ul class="misuratori-list">
+            {% for misuratore in misuratori %} 
+                {% if misuratore.is_active %}
+                    <a class="impianto-link" href="{% url 'misuratore_detail' misuratore.id_misuratore %}">
+                        <li class="impianto-li is-ok">{{ misuratore.name }}</li>
+                    </a>
+                {% endif %} 
+            {% endfor %}
+        </ul>
+    </section>
+    {% comment %} misuratori non attivi - seconda colonna seconda riga {% endcomment %}
+    <section id="section-2" class="misuratori-col non-attivi">
+        <h2 id="misuratori-non-attivi-title" class="misuratori-title">Impianti Non Attivi</h2>
+        <ul class="misuratori-list">
+            {% for misuratore in misuratori %} 
+                {% if not misuratore.is_active %}
+                    <a class="lista-link-impianti-non-attivi" href="{% url 'misuratore_detail' misuratore.id_misuratore %}">
+                        <li class="impianto-li is-off">{{ misuratore.name }}</li>
+                    </a>
+                {% endif %} 
+            {% endfor %}
+        </ul>
+    </section>
+    {% comment %} terza colonna seconda riga  {% endcomment %}
+    <section id="section-3" class="misuratori-col altro">
+        <h2>Link utili</h2>
+        <ul id="lista-link-utili">
+        <li>
+            <a href="../../../static/portale/pelton_yield_charts/rendimento_curve_quattro.html" target="_blank" rel="noopener">
+            Confronto delle curve di rendimento delle turbine Pelton nei nostri impianti
+            </a>
+        </li>
+        <li>
+            <a href="../../../static/portale/pelton_yield_charts/rendimento_fit_gpt.html" target="_blank" rel="noopener">
+            Curva stimata tramite funzione di fit sui dati normalizzati di rendimento medio delle turbine Pelton
+            </a>
+        </li>
+        <li>
+            <a href="../../../static/portale/pelton_yield_charts/pelton_yield_curve.html" target="_blank" rel="noopener">
+            Grafici comparativi dei dati delle turbine Pelton (Canaletta, Partitore, San Teodoro): portata, rendimento e pressione, con confronto tra potenza attesa e misurata
+            </a>
+        </li>
+        </ul>
+    </section>
+</div>    
+
+</div>
+
+
