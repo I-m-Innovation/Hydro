@@ -1,29 +1,29 @@
 {% load static %}
 <header class="home-site-header">
-  <div id="logo-and-button">
-    <a href="{% url 'home' %}" class="brand">
+  <div id="logo-and-button">    
+    <img
+      src="{% static 'portale/images/zilio_logo.png' %}"
+      alt="Logo Zilio Group"
+      class="logo"
+    />
+    
+    {% comment %} <a href="{% url 'misuratori_index' %}" class="header-action-link">
       <img
-        src="{% static 'portale/images/zilio_logo.png' %}"
-        alt="Logo Zilio Group"
-        class="logo"
+        src="{% static 'portale/images/go_back_icon.png' %}"
+        id="go-back-icon"
+        alt=""
+        class="go-back-icon"
+        title="Torna alla lista degli impianti"
       />
-    </a>
-    <button
-      id="toggle-sidebar"
-      class="btn-toggle"
-      type="button"
-      aria-expanded="true"
-      aria-controls="lista-impianti"
-    >
-      Nascondi lista
-    </button>
+      <span>Torna indietro</span>
+    </a> {% endcomment %}
   </div>
 
   <h1>Portale Hydro</h1>
   <nav class="home-header-nav">
     <ul>
       <li><a href="{% url 'facilities_map' %}">Mappa</a></li>
-      <li><a href="{% url 'home'%}">Misuratori</a></li>
+      <li><a href="{% url 'misuratori_index'%}">Misuratori</a></li>
       {% comment %} <li>
         <form method="post" action="{% url 'logout' %}">
           {% csrf_token %}
