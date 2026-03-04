@@ -1,6 +1,7 @@
 from django.contrib import admin
 
 from .models import (
+    TabTipologiaTurbina,
     tab_measurements,
     tab_measurements_clean,
     tab_misuratori,
@@ -40,3 +41,13 @@ class TabStatisticheMisuratoriAdmin(admin.ModelAdmin):
     )
     search_fields = ("id_misuratore",)
     ordering = ("id_misuratore",)
+
+
+@admin.register(TabTipologiaTurbina)
+class TabTipologiaTurbinaAdmin(admin.ModelAdmin):
+    list_display = ("id", "nome", "descrizione")
+    search_fields = ("nome",)
+    ordering = ("id",)
+    
+        
+        

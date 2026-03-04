@@ -73,3 +73,14 @@ class tab_statistiche_misuratori(models.Model):
         managed = False
         db_table = "tab_statistiche_misuratori"
         verbose_name_plural = "Tab statistiche misuratori"
+
+
+class TabTipologiaTurbina(models.Model):
+    id = models.BigAutoField(primary_key=True)
+    nome = models.CharField(unique=True, max_length=50)
+    descrizione = models.TextField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tab_tipologia_turbina'
+        verbose_name_plural = "Tab tipologia turbina"
