@@ -64,7 +64,10 @@ const CONFIGURAZIONE_GRAFICO = {
                     label: function(context) {
                         const x = context.parsed.x;
                         const y = context.parsed.y;
-                        return ` Portata: ${x.toFixed(3)} | Rendimento: ${(y * 100).toFixed(1)}%`;
+                        const portata_min_ls = 3.5;
+                        const portata_max_ls = 128;
+                        const portata_reale_ls = portata_min_ls + x * (portata_max_ls - portata_min_ls);
+                        return ` Portata norm.: ${x.toFixed(3)} | Portata: ${portata_reale_ls.toFixed(2)} l/s | Rendimento: ${(y * 100).toFixed(1)}%`;
                     }
                 }
             }
@@ -81,7 +84,14 @@ const CONFIGURAZIONE_GRAFICO = {
                 ticks: {
                     count: 11, // Forza esattamente 11 tick (0.0, 0.1, 0.2, ..., 1.0)
                     callback: function(value) {
-                        return value.toFixed(1);
+                        const valore_normalizzato = Number(value);
+                        if (valore_normalizzato === 0) {
+                            return ['0.0', '(3.5 l/s)'];
+                        }
+                        if (valore_normalizzato === 1) {
+                            return ['1.0', '(128 l/s)'];
+                        }
+                        return valore_normalizzato.toFixed(1);
                     }
                 }
             },
