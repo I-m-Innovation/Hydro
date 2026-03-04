@@ -454,6 +454,8 @@ document.addEventListener("DOMContentLoaded", () => {
             order: ds.order,
             spanGaps: ds.spanGaps,
             showLine: ds.showLine,
+            yAxisID: ds.yAxisID || "y",
+            hidden: Boolean(ds.hidden),
         })),
         ...(averageDataset ? [averageDataset] : []),
     ];
@@ -610,6 +612,34 @@ document.addEventListener("DOMContentLoaded", () => {
                     width: 1,
                 },
             },
+            ...(cfg.y2Title
+                ? {
+                    yPower: {
+                        beginAtZero: true,
+                        position: "right",
+                        min: 0,
+                        max: 500,
+                        ticks: {
+                            maxTicksLimit: 5,
+                            precision: cfg.y2TickPrecision ?? 2,
+                            autoSkip: true,
+                        },
+                        title: {
+                            display: true,
+                            text: cfg.y2Title,
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                            color: "#fff",
+                        },
+                        border: {
+                            display: true,
+                            color: "rgba(17, 24, 39, 0.2)",
+                            width: 1,
+                        },
+                    },
+                }
+                : {}),
         },
     });
 
@@ -783,6 +813,9 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         } else {
             datasetConfigs.forEach((ds) => {
+                if (ds.yAxisID && ds.yAxisID !== "y") {
+                    return;
+                }
                 const sourceValues = data[ds.source] || [];
                 sourceValues.forEach((value) => {
                     const parsed = Number(value);
@@ -876,6 +909,15 @@ document.addEventListener("DOMContentLoaded", () => {
         datasetConfigs.forEach((ds, index) => {
             const sourceValues = data[ds.source] || [];
             const parsedValues = parseNumberArray(sourceValues);
+            if (isFlowChart(cfg) && ds.source === "expected_power_kw") {
+                const expectedRanges = new Set(["24h", "7d", "1m"]);
+                const isExpectedVisible = expectedRanges.has(rangeKey);
+                chart.data.datasets[index].hidden = !isExpectedVisible;
+                if (!isExpectedVisible) {
+                    chart.data.datasets[index].data = [];
+                    return;
+                }
+            }
 
             if (isFlowChart(cfg)) {
                 console.log(
@@ -1028,6 +1070,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     color: "#6b728089",
                     fill: false,
                     source: "flow_ls_raw",
+                    yAxisID: "y",
                     order: 2,
                     spanGaps: false,
                     borderWidth: 1,
@@ -1038,13 +1081,28 @@ document.addEventListener("DOMContentLoaded", () => {
                     fillColor: "rgba(83, 206, 255, 0.54)",
                     fill: true,
                     source: "flow_ls_smoothed",
+                    yAxisID: "y",
                     order: 1,
                     pointRadius: 0,
                     pointHoverRadius: 2,
                     spanGaps: false,
                     borderWidth: 1,
                 },
+                {
+                    label: "Potenza attesa (kW)",
+                    color: "#16a34a",
+                    fill: false,
+                    source: "expected_power_kw",
+                    yAxisID: "yPower",
+                    order: 0,
+                    pointRadius: 0,
+                    pointHoverRadius: 2,
+                    spanGaps: false,
+                    borderWidth: 2,
+                },
             ],
+            y2Title: "Potenza attesa (kW)",
+            y2TickPrecision: 2,
         },
         {
             id: "chart-fluid-velocity",

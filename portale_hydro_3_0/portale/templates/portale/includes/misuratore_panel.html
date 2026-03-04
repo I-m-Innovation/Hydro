@@ -114,12 +114,35 @@
                         title="Decimazione punti attiva. LTTB riduce i punti mantenendo trend e picchi per migliorare le prestazioni."
                         >i</button>
                         <button
-                        class="chart-info"
+                        class="chart-info chart-info-wide chart-info-rich"
                         type="button"
-                        aria-label="Informazioni sui range lunghi"
-                        data-tooltip="Per i range 6m, 1y e all il grafico mostra solo le medie giornaliere per ridurre il carico e ottimizzare le prestazioni."
-                        title="Per i range 6m, 1y e all il grafico mostra solo le medie giornaliere per ridurre il carico e ottimizzare le prestazioni."
-                        >i</button>
+                        aria-label="Informazioni combinate: range lunghi e potenza attesa"
+                        data-popover-target="expected-power-popover"
+                        title="RANGE LUNGHI + POTENZA ATTESA"
+                        >i+</button>
+                        <div
+                        id="expected-power-popover"
+                        class="chart-popover is-hidden"
+                        role="dialog"
+                        aria-hidden="true"
+                        aria-label="Dettagli: range lunghi e potenza attesa"
+                        >
+                            <h4 class="chart-popover__title">Dettagli grafico portata</h4>
+                            <p class="chart-popover__section-title">Range lunghi (6m, 1y, all)</p>
+                            <p class="chart-popover__text">
+                                Il grafico mostra medie giornaliere per ridurre il carico e migliorare le prestazioni.
+                            </p>
+                            <p class="chart-popover__section-title">Potenza attesa (kW)</p>
+                            <div
+                            class="chart-popover__math"
+                            data-katex="P = \rho \cdot g \cdot Q \cdot H \cdot \eta(Q)"
+                            ></div>
+                            <ul class="chart-popover__list">
+                                <li><strong>Q</strong>: portata smoothed (fallback raw), convertita in m3/s</li>
+                                <li><strong>η(Q)</strong>: interpolata dalla curva rendimento della turbina</li>
+                                <li><strong>H</strong>: salto letto da configurazione DB</li>
+                            </ul>
+                        </div>
                         <button class="chart-zoom" type="button" data-target="chart-flow-rate" aria-label="Zoom grafico portata">+</button>
                         <button class="chart-reset" type="button" data-target="chart-flow-rate" aria-label="Reset zoom grafico portata">Reset</button>
                         <button class="chart-refresh" type="button" data-target="chart-flow-rate" aria-label="Aggiorna grafico portata">Aggiorna</button>
@@ -244,7 +267,10 @@
 <!-- CDN libraries -->
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
 <!-- Our efficiency chart script -->
 <script src="{% static 'portale/js/curva_di_rendimento_per_turbina.js' %}"></script>
 <!-- Popup management script -->
 <script src="{% static 'portale/js/popup_efficiency.js' %}"></script>
+<script src="{% static 'portale/js/chart_info_popover.js' %}"></script>

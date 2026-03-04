@@ -1,4 +1,5 @@
 from datetime import timedelta
+from bisect import bisect_right
 import time
 import re
 
@@ -14,6 +15,9 @@ from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misu
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 MAX_ID_MISURATORE_LEN = 128
 ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
+EXPECTED_POWER_RANGES = {"24h", "7d", "1m"}
+WATER_DENSITY_KG_M3 = 1000.0
+GRAVITY_M_S2 = 9.81
 
 
 def validate_id_misuratore(raw_value):
@@ -30,6 +34,100 @@ def validate_id_misuratore(raw_value):
     if not any(not ch.isspace() for ch in raw_value):
         return None, "id_misuratore cannot be only whitespace"
     return raw_value, None
+
+
+def _safe_float(value):
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
+
+
+def _pick_flow_ls(flow_ls_raw, flow_ls_smoothed):
+    """
+    Use smoothed flow when present, otherwise fallback to raw flow.
+    """
+    flow = _safe_float(flow_ls_smoothed)
+    if flow is not None:
+        return flow
+    return _safe_float(flow_ls_raw)
+
+
+def _get_turbina_curve_points_by_id(id_turbina):
+    """
+    Returns two sorted arrays (q_points_ls, eta_points) from tab_turbina_curve_points.
+    Points with null q_ls or null eta are skipped.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT q_ls, eta
+            FROM hydro.tab_turbina_curve_points
+            WHERE id_turbina = %s
+              AND q_ls IS NOT NULL
+              AND eta IS NOT NULL
+            ORDER BY q_ls ASC
+            """,
+            [id_turbina],
+        )
+        rows = cursor.fetchall()
+
+    q_points_ls = []
+    eta_points = []
+    for q_ls, eta in rows:
+        q_val = _safe_float(q_ls)
+        eta_val = _safe_float(eta)
+        if q_val is None or eta_val is None:
+            continue
+        q_points_ls.append(q_val)
+        eta_points.append(eta_val)
+    return q_points_ls, eta_points
+
+
+def _interpolate_eta_linear_clamped(flow_ls, q_points_ls, eta_points):
+    """
+    Linear interpolation with clamp:
+    - below first q -> first eta
+    - above last q -> last eta
+    """
+    if flow_ls is None or not q_points_ls or not eta_points:
+        return None
+    if len(q_points_ls) == 1:
+        return eta_points[0]
+
+    if flow_ls <= q_points_ls[0]:
+        return eta_points[0]
+    if flow_ls >= q_points_ls[-1]:
+        return eta_points[-1]
+
+    right_idx = bisect_right(q_points_ls, flow_ls)
+    left_idx = right_idx - 1
+    q0 = q_points_ls[left_idx]
+    q1 = q_points_ls[right_idx]
+    eta0 = eta_points[left_idx]
+    eta1 = eta_points[right_idx]
+
+    if q1 <= q0:
+        return eta0
+    ratio = (flow_ls - q0) / (q1 - q0)
+    return eta0 + (eta1 - eta0) * ratio
+
+
+def _compute_expected_power_kw(flow_ls, head_m, eta):
+    """
+    P[kW] = rho * g * Q[m3/s] * H[m] * eta / 1000
+    where Q[m3/s] = flow_ls / 1000.
+    """
+    if flow_ls is None or head_m is None or eta is None:
+        return None
+    if head_m <= 0:
+        return None
+    q_m3s = flow_ls / 1000.0
+    power_kw = (WATER_DENSITY_KG_M3 * GRAVITY_M_S2 * q_m3s * head_m * eta) / 1000.0
+    return round(power_kw, 2)
 
 # @login_required
 def home(request):
@@ -64,6 +162,15 @@ def measurements_api(request):
             status=400,
         )
     use_mv = range_key in {"6m", "1y", "all"}
+    should_compute_expected_power = range_key in EXPECTED_POWER_RANGES
+    expected_setup = None
+    if should_compute_expected_power:
+        expected_setup = _get_expected_power_config_for_misuratore(id_misuratore)
+        if not expected_setup:
+            print(
+                "[measurements_api] "
+                f"id={id_misuratore} range={range_key} expected_power=disabled (missing config)"
+            )
 
     max_points_by_range = {
         "24h": None,
@@ -100,6 +207,7 @@ def measurements_api(request):
                         "flow_ls_raw": [],
                         "flow_ls_smoothed": [],
                         "is_outlier": [],
+                        "expected_power_kw": [],
                     }
                 )
 
@@ -131,6 +239,7 @@ def measurements_api(request):
                         "flow_ls_raw": [],
                         "flow_ls_smoothed": [],
                         "is_outlier": [],
+                        "expected_power_kw": [],
                     }
                 )
 
@@ -152,6 +261,7 @@ def measurements_api(request):
             flow_raw = []
             flow_smoothed = []
             outliers = []
+            expected_power = []
             i = 0
             while True:
                 chunk = cursor.fetchmany(5000)
@@ -173,6 +283,22 @@ def measurements_api(request):
                         else None
                     )
                     outliers.append(None)
+                    if expected_setup:
+                        flow_used = _pick_flow_ls(flow_ls_raw_avg, flow_ls_smoothed_avg)
+                        eta = _interpolate_eta_linear_clamped(
+                            flow_used,
+                            expected_setup["q_points_ls"],
+                            expected_setup["eta_points"],
+                        )
+                        expected_power.append(
+                            _compute_expected_power_kw(
+                                flow_used,
+                                expected_setup["head_m"],
+                                eta,
+                            )
+                        )
+                    else:
+                        expected_power.append(None)
                     i += 1
 
         data = {
@@ -180,6 +306,7 @@ def measurements_api(request):
             "flow_ls_raw": flow_raw,
             "flow_ls_smoothed": flow_smoothed,
             "is_outlier": outliers,
+            "expected_power_kw": expected_power,
         }
         print(
             "[measurements_api] "
@@ -224,6 +351,7 @@ def measurements_api(request):
                     "flow_ls_raw": [],
                     "flow_ls_smoothed": [],
                     "is_outlier": [],
+                    "expected_power_kw": [],
                 }
             )
         step = max(1, total // max_points)
@@ -241,6 +369,7 @@ def measurements_api(request):
     flow_raw = []
     flow_smoothed = []
     outliers = []
+    expected_power = []
     for i, (data_misurazione, flow_ls_raw, flow_ls_smoothed, is_outlier) in enumerate(
         rows.iterator(chunk_size=5000)
     ):
@@ -250,12 +379,29 @@ def measurements_api(request):
         flow_raw.append(flow_ls_raw)
         flow_smoothed.append(flow_ls_smoothed)
         outliers.append(is_outlier)
+        if expected_setup:
+            flow_used = _pick_flow_ls(flow_ls_raw, flow_ls_smoothed)
+            eta = _interpolate_eta_linear_clamped(
+                flow_used,
+                expected_setup["q_points_ls"],
+                expected_setup["eta_points"],
+            )
+            expected_power.append(
+                _compute_expected_power_kw(
+                    flow_used,
+                    expected_setup["head_m"],
+                    eta,
+                )
+            )
+        else:
+            expected_power.append(None)
 
     data = {
         "timestamps": timestamps,
         "flow_ls_raw": flow_raw,
         "flow_ls_smoothed": flow_smoothed,
         "is_outlier": outliers,
+        "expected_power_kw": expected_power,
     }
     print(
         "[measurements_api] "
@@ -541,6 +687,36 @@ def _get_turbina_params_for_misuratore(id_misuratore):
             [impianto_name],
         )
         return cursor.fetchone()
+
+
+def _get_expected_power_config_for_misuratore(id_misuratore):
+    """
+    Resolve runtime configuration for expected power from DB:
+    - turbine id linked to the meter
+    - net head (no hard-coded default)
+    - efficiency curve points (q_ls, eta)
+    """
+    params = _get_turbina_params_for_misuratore(id_misuratore)
+    if not params:
+        return None
+
+    turbina_id = params[0]
+    salto_netto_m = _safe_float(params[1])
+    salto_nominale_m = _safe_float(params[2])
+    head_m = salto_netto_m if salto_netto_m is not None else salto_nominale_m
+    if head_m is None or head_m <= 0:
+        return None
+
+    q_points_ls, eta_points = _get_turbina_curve_points_by_id(turbina_id)
+    if not q_points_ls or not eta_points:
+        return None
+
+    return {
+        "turbina_id": turbina_id,
+        "head_m": head_m,
+        "q_points_ls": q_points_ls,
+        "eta_points": eta_points,
+    }
 
 
 def _compute_eta_potenza(flow_ls_avg, params):

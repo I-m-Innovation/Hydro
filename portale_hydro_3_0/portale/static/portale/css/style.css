@@ -660,6 +660,74 @@ sia con .facility-panel/.facility-grid se li usi nel template.
   z-index: 5;
 }
 
+.chart-info.chart-info-wide::after {
+  width: 360px;
+  white-space: pre-line;
+  line-height: 1.35;
+}
+
+.chart-info.chart-info-rich::after {
+  display: none;
+}
+
+.chart-popover {
+  position: fixed;
+  width: min(440px, calc(100vw - 24px));
+  max-height: 70vh;
+  overflow: auto;
+  background: rgba(17, 24, 39, 0.97);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 14px 28px rgba(0, 0, 0, 0.35);
+  padding: 12px 14px;
+  z-index: 40;
+}
+
+.chart-popover.is-hidden {
+  display: none;
+}
+
+.chart-popover__title {
+  margin: 0 0 8px;
+  font-size: 0.96rem;
+  line-height: 1.25;
+}
+
+.chart-popover__section-title {
+  margin: 8px 0 4px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: #bfdbfe;
+}
+
+.chart-popover__text {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.chart-popover__math {
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.chart-popover__list {
+  margin: 0;
+  padding-left: 16px;
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.chart-popover__list li + li {
+  margin-top: 4px;
+}
+
 .chart-info:hover::after,
 .chart-info:focus-visible::after {
   opacity: 1;
