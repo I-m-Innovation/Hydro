@@ -67,7 +67,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 return;
             }
             const qM3s = lastFlowLs / 1000.0;
-            const powerKw = 9.81 * headVal * qM3s * lastEta;
+            const powerKw = Math.max(0, 9.81 * headVal * qM3s * lastEta);
             powerEl.textContent = formatNumber(powerKw, 2);
         };
 

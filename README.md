@@ -680,11 +680,13 @@ Questa nota documenta la logica attuale della serie `Potenza attesa (kW)` mostra
 - Frontend: `portale_hydro_3_0/portale/static/portale/js/charts.js` come dataset `expected_power_kw` su asse destro (`yPower`).
 
 ### Range supportati
-- La serie viene calcolata/mostrata solo per:
+- La serie viene calcolata/mostrata per tutti i range disponibili:
   - `24h`
   - `7d`
   - `1m`
-- Per `6m`, `1y`, `all` la serie non viene calcolata.
+  - `6m`
+  - `1y`
+  - `all`
 
 ### Formula usata
 - `P[kW] = rho * g * Q[m3/s] * H[m] * eta / 1000`
@@ -710,7 +712,7 @@ In questi casi il backend risponde comunque con `expected_power_kw`, ma con valo
 
 ### Nota legenda
 - La voce in legenda puo comparire anche quando la linea non e disegnata.
-- Motivo: il dataset e definito nel grafico, ma puo essere hidden/senza punti in base al range o alla configurazione mancante.
+- Motivo: il dataset e definito nel grafico, ma puo risultare senza punti quando il backend restituisce `expected_power_kw` con valori `null` (tipicamente per configurazione mancante/non valida).
 
 ---
 
@@ -765,6 +767,6 @@ Include caricati nel template:
 - miglior leggibilita rispetto al tooltip testuale standard
 
 ### Nota implementativa
-Per il bottone `i+` e disattivato il vecchio pseudo-tooltip CSS:
+Per il bottone `i` e disattivato il vecchio pseudo-tooltip CSS:
 - classe `chart-info-rich`
 - regola: `.chart-info.chart-info-rich::after { display: none; }`

@@ -333,8 +333,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const xValue = opts?.xValue;
             const yValue = opts?.yValue;
             const yZeroValue = opts?.yZeroValue;
+            const yZeroValueRight = opts?.yZeroValueRight;
             const xScale = chart.scales?.x;
             const yScale = chart.scales?.y;
+            const yScaleRight = chart.scales?.yPower;
             const { ctx, chartArea } = chart;
             if (!xScale || !chartArea) {
                 return;
@@ -361,6 +363,24 @@ document.addEventListener("DOMContentLoaded", () => {
                     ctx.lineWidth = opts?.yZeroLineWidth ?? opts?.lineWidth ?? 1;
                     ctx.strokeStyle = opts?.yZeroColor || "rgba(17, 24, 39, 0.6)";
                     ctx.setLineDash(opts?.yZeroDash || []);
+                    ctx.stroke();
+                }
+            }
+            if (
+                yZeroValueRight !== null &&
+                yZeroValueRight !== undefined &&
+                yScaleRight
+            ) {
+                const y0Right = yScaleRight.getPixelForValue(yZeroValueRight);
+                if (Number.isFinite(y0Right)) {
+                    ctx.beginPath();
+                    ctx.moveTo(chartArea.left, y0Right);
+                    ctx.lineTo(chartArea.right, y0Right);
+                    ctx.lineWidth =
+                        opts?.yZeroRightLineWidth ?? opts?.yZeroLineWidth ?? opts?.lineWidth ?? 1;
+                    ctx.strokeStyle =
+                        opts?.yZeroRightColor || "rgba(22, 163, 74, 0.85)";
+                    ctx.setLineDash(opts?.yZeroRightDash || []);
                     ctx.stroke();
                 }
             }
@@ -404,7 +424,9 @@ document.addEventListener("DOMContentLoaded", () => {
         afterBuildTicks(chart, _args, opts) {
             const yValue = opts?.yValue;
             const yZeroValue = opts?.yZeroValue;
+            const yZeroValueRight = opts?.yZeroValueRight;
             const yScale = chart.scales?.y;
+            const yScaleRight = chart.scales?.yPower;
             if (!yScale || !Array.isArray(yScale.ticks)) {
                 return;
             }
@@ -424,6 +446,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!exists && Number.isFinite(Number(yZeroValue))) {
                     yScale.ticks.push({ value: Number(yZeroValue) });
                     yScale.ticks.sort((a, b) => a.value - b.value);
+                }
+            }
+            if (
+                yScaleRight &&
+                Array.isArray(yScaleRight.ticks) &&
+                yZeroValueRight !== null &&
+                yZeroValueRight !== undefined
+            ) {
+                const existsRight = yScaleRight.ticks.some(
+                    (tick) => Number(tick.value) === Number(yZeroValueRight),
+                );
+                if (!existsRight && Number.isFinite(Number(yZeroValueRight))) {
+                    yScaleRight.ticks.push({ value: Number(yZeroValueRight) });
+                    yScaleRight.ticks.sort((a, b) => a.value - b.value);
                 }
             }
         },
@@ -504,6 +540,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             yZeroColor: "rgba(31, 41, 55, 0.8)",
                             yZeroLineWidth: 2,
                             yZeroDash: [8, 4],
+                            yZeroValueRight: 0,
+                            yZeroRightColor: "rgba(22, 163, 74, 0.9)",
+                            yZeroRightLineWidth: 2,
+                            yZeroRightDash: [4, 4],
                         }
                         : {},
             tooltip: {
@@ -617,8 +657,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     yPower: {
                         beginAtZero: true,
                         position: "right",
-                        min: 0,
-                        max: 500,
+                        min: -200,
+                        max: 400,
                         ticks: {
                             maxTicksLimit: 5,
                             precision: cfg.y2TickPrecision ?? 2,
@@ -909,15 +949,6 @@ document.addEventListener("DOMContentLoaded", () => {
         datasetConfigs.forEach((ds, index) => {
             const sourceValues = data[ds.source] || [];
             const parsedValues = parseNumberArray(sourceValues);
-            if (isFlowChart(cfg) && ds.source === "expected_power_kw") {
-                const expectedRanges = new Set(["24h", "7d", "1m"]);
-                const isExpectedVisible = expectedRanges.has(rangeKey);
-                chart.data.datasets[index].hidden = !isExpectedVisible;
-                if (!isExpectedVisible) {
-                    chart.data.datasets[index].data = [];
-                    return;
-                }
-            }
 
             if (isFlowChart(cfg)) {
                 console.log(
@@ -1048,7 +1079,8 @@ document.addEventListener("DOMContentLoaded", () => {
             fill: true,
             useApi: true,
             xScaleType: "linear",
-            xTitle: "",
+            xTitle: "Timestamp",
+            yTitle: "Portata (l/s)",
             xTicksCallback: function (value) {
                 if (value === this.min || value === this.max) {
                     return formatTimestampFull(value);

@@ -15,7 +15,7 @@ from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misu
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 MAX_ID_MISURATORE_LEN = 128
 ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
-EXPECTED_POWER_RANGES = {"24h", "7d", "1m"}
+EXPECTED_POWER_RANGES = set(ALLOWED_RANGE_KEYS)
 WATER_DENSITY_KG_M3 = 1000.0
 GRAVITY_M_S2 = 9.81
 
@@ -125,9 +125,11 @@ def _compute_expected_power_kw(flow_ls, head_m, eta):
         return None
     if head_m <= 0:
         return None
+    if flow_ls <= 0:
+        return 0.0
     q_m3s = flow_ls / 1000.0
     power_kw = (WATER_DENSITY_KG_M3 * GRAVITY_M_S2 * q_m3s * head_m * eta) / 1000.0
-    return round(power_kw, 2)
+    return round(max(0.0, power_kw), 2)
 
 # @login_required
 def home(request):
@@ -759,6 +761,8 @@ def _compute_eta_potenza(flow_ls_avg, params):
 
     q_m3s = flow_ls_avg / 1000.0
     power_kw = 9.81 * head_m * q_m3s * eta if head_m > 0 else None
+    if power_kw is not None:
+        power_kw = max(0.0, power_kw)
 
     return {
         "eta": eta,
