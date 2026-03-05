@@ -67,8 +67,8 @@ def _get_turbina_curve_points_by_id(id_turbina):
             SELECT q_ls, eta
             FROM hydro.tab_turbina_curve_points
             WHERE id_turbina = %s
-              AND q_ls IS NOT NULL
-              AND eta IS NOT NULL
+            AND q_ls IS NOT NULL
+            AND eta IS NOT NULL
             ORDER BY q_ls ASC
             """,
             [id_turbina],
@@ -410,7 +410,6 @@ def measurements_api(request):
     )
     return JsonResponse(data)
 
-
 # @login_required
 def duration_curve_api(request):
     t0 = time.perf_counter()
@@ -502,7 +501,7 @@ def flow_histogram_api(request):
             SELECT bin_index, range_start, range_end, count
             FROM hydro.tab_flow_histogram
             WHERE id_misuratore = %s
-              AND updated_at = (SELECT updated_at FROM latest)
+            AND updated_at = (SELECT updated_at FROM latest)
             ORDER BY bin_index
             """,
             [id_misuratore, id_misuratore],
@@ -664,23 +663,23 @@ def _get_turbina_params_for_misuratore(id_misuratore):
         impianto_name = row[0]
         cursor.execute(
             """
-            SELECT t.id,
-                   t.salto_netto_m,
-                   t.salto_nominale_m,
-                   p.eta0,
-                   p.eta_max,
-                   p.x0,
-                   p.aL,
-                   p.aR,
-                   p.kL,
-                   p.kR,
-                   p.q_min_ls,
-                   p.q_max_ls
+            SELECT  t.id,
+                    t.salto_netto_m,
+                    t.salto_nominale_m,
+                    p.eta0,
+                    p.eta_max,
+                    p.x0,
+                    p.aL,
+                    p.aR,
+                    p.kL,
+                    p.kR,
+                    p.q_min_ls,
+                    p.q_max_ls
             FROM hydro.tab_turbine t
             JOIN hydro.tab_impianti i ON i.id = t.id_impianto
             JOIN hydro.tab_turbina_parametri p ON p.id_turbina = t.id
             WHERE i.nome = %s
-              AND p.is_active = TRUE
+            AND p.is_active = TRUE
             ORDER BY t.id
             LIMIT 1
             """,
@@ -860,7 +859,7 @@ def test_canvas(request, nome_tipologia_turbina):
         "nome_turbina": nome_tipologia_turbina  # Pass actual parameter value
         })
     
-    
+
 
 def misuratori_index(request): 
     misuratori = tab_misuratori.objects.all()
@@ -869,3 +868,5 @@ def misuratori_index(request):
         "title": "Hydro 3.0",
     }
     return render(request, "portale/misuratori_index.html", context)
+
+
