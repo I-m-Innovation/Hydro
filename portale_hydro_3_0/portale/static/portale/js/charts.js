@@ -1477,6 +1477,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const zoomButtons = grid.querySelectorAll(".chart-zoom");
+    let activeZoomCard = null;
+
+    const applyZoomCardHeight = (card) => {
+        if (!card) {
+            return;
+        }
+        const footer = document.querySelector(".site-footer");
+        const cardRect = card.getBoundingClientRect();
+        const footerTop = footer
+            ? footer.getBoundingClientRect().top
+            : window.innerHeight;
+        const safeBottomGap = 8;
+        const available = Math.floor(footerTop - cardRect.top - safeBottomGap);
+        const clamped = Math.max(340, Math.min(available, 1200));
+        card.style.setProperty("--zoom-card-height", `${clamped}px`);
+    };
+
+    const clearZoomCardHeight = (card) => {
+        if (!card) {
+            return;
+        }
+        card.style.removeProperty("--zoom-card-height");
+    };
+
     zoomButtons.forEach((button) => {
         button.addEventListener("click", () => {
             const targetId = button.getAttribute("data-target");
@@ -1505,13 +1529,17 @@ document.addEventListener("DOMContentLoaded", () => {
                         card.classList.remove("is-zoomed");
                     }
                 });
+                activeZoomCard = targetCard;
+                applyZoomCardHeight(targetCard);
                 button.textContent = "Esci";
             } else {
                 grid.classList.remove("is-zoomed");
                 cards.forEach((card) => {
                     card.classList.remove("is-zoomed");
                     card.classList.remove("is-dim");
+                    clearZoomCardHeight(card);
                 });
+                activeZoomCard = null;
                 zoomButtons.forEach((btn) => {
                     btn.textContent = "Zoom";
                 });
@@ -1530,5 +1558,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             });
         });
+    });
+
+    window.addEventListener("resize", () => {
+        if (grid.classList.contains("is-zoomed") && activeZoomCard) {
+            applyZoomCardHeight(activeZoomCard);
+            requestAnimationFrame(() => {
+                instances.forEach((chartInstance) => {
+                    chartInstance.resize();
+                });
+            });
+        }
     });
 });

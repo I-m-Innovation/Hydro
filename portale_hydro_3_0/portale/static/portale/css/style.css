@@ -779,22 +779,32 @@ sia con .facility-panel/.facility-grid se li usi nel template.
 .facility-plot-grid.is-zoomed {
   position: relative;
   align-items: stretch;
+  margin-bottom: 0;
 }
 
 .facility-plot-grid.is-zoomed .chart-card.is-zoomed {
+  --zoom-card-height: clamp(
+    380px,
+    calc(100vh - var(--header-height) - var(--footer-height) - 170px),
+    980px
+  );
   grid-column: 1 / -1;
-  min-height: 420px;
-  max-height: none;
+  /* JS overrides this variable with the real available height. */
+  height: var(--zoom-card-height);
+  min-height: 380px;
+  max-height: var(--zoom-card-height);
 }
 
 .facility-plot-grid.is-zoomed .chart-card.is-zoomed .chart-card-body {
-  min-height: 420px;
+  min-height: 0;
   max-height: none;
   height: auto;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .facility-plot-grid.is-zoomed .chart-card.is-zoomed canvas {
-  max-height: none;
+  max-height: 100%;
 }
 
 .facility-plot-grid.is-zoomed .chart-card.is-dim {
