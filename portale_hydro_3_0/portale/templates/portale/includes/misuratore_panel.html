@@ -15,10 +15,31 @@
         <div class="facility-left-column">
             <div class="stats-and-range">
             <div class="facility-stats">
-                <h3>Statistiche Portata </h3>
-                <table class="facility-table">
+                {% if misuratore.name == 'Trebisacce' or misuratore.name == 'Gateway 1' %}
+                <h3>Calcolo Rendimento</h3>
+                <div class="calc-mode-switch" role="tablist" aria-label="Modalita calcolo rendimento">
+                    <button type="button" class="calc-mode-btn is-active" id="btn-mode-auto" aria-controls="table-calc-auto">Auto</button>
+                    <button type="button" class="calc-mode-btn" id="btn-mode-manual" aria-controls="table-calc-manual">Manuale</button>
+                </div>
+
+                <table class="facility-table" id="table-calc-auto">
                 <tbody>
-            {% if misuratore.name == 'Trebisacce' %}
+                    <tr>
+                    <th scope="row">ρ (kg/m³)</th>
+                    <td><strong>1000</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">g (m/s²)</th>
+                    <td><strong>9.81</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">Q media 30 min (l/s)</th>
+                    <td><strong id="flow-30m">--</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">Q media 30 min (m³/s)</th>
+                    <td><strong id="q-m3s-30m">--</strong></td>
+                </tr>
                     <tr>
                     <th scope="row">Rendimento medio (ultimi 30 min)</th>
                     <td><strong id="eta-30m">--</strong></td>
@@ -42,7 +63,84 @@
                         />
                     </td>
                 </tr>
-            {% endif %}
+                </tbody>
+                </table>
+
+                <table class="facility-table is-hidden" id="table-calc-manual">
+                <tbody>
+                <tr>
+                    <th scope="row">ρ (kg/m³)</th>
+                    <td><strong>1000</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">g (m/s²)</th>
+                    <td><strong>9.81</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">Q manuale (l/s)</th>
+                    <td>
+                        <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        class="input-head-value"
+                        id="input-flow-manual"
+                        value=""
+                        placeholder="Q (l/s)"
+                        aria-label="Portata manuale"
+                        />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Q manuale (m³/s)</th>
+                    <td><strong id="q-m3s-manual">--</strong></td>
+                </tr>
+                <tr>
+                    <th scope="row">η manuale (0..1)</th>
+                    <td>
+                        <input
+                        type="number"
+                        step="0.001"
+                        min="0"
+                        max="1"
+                        class="input-head-value"
+                        id="input-eta-manual"
+                        value=""
+                        placeholder="eta"
+                        aria-label="Rendimento manuale"
+                        />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">H manuale (m)</th>
+                    <td>
+                        <input
+                        type="number"
+                        step="0.1"
+                        min="0"
+                        class="input-head-value"
+                        id="input-head-manual"
+                        value=""
+                        placeholder="H (m)"
+                        aria-label="Salto manuale"
+                        />
+                    </td>
+                </tr>
+                <tr>
+                    <th scope="row">Potenza simulata</th>
+                    <td><strong id="power-manual">--</strong> kW</td>
+                </tr>
+                <tr>
+                    <th scope="row">Azione</th>
+                    <td><button type="button" id="btn-calc-manual-power" class="calc-action-btn">Calcola</button></td>
+                </tr>
+                </tbody>
+                </table>
+                <br />
+                {% endif %}
+                <h3>Statistiche Portata</h3>
+                <table class="facility-table">
+                <tbody>
                 <tr>
                     <th scope="row">Unita di misura</th>
                     <td colspan="2"><strong>l/s</strong></td>
