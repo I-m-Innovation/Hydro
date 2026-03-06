@@ -1721,3 +1721,9 @@ a:hover {
   margin-bottom: 1em;
 }
 
+
+
+.work-in-progress {
+  color: rgb(255, 143, 51);
+  border: 1px solid rgb(255, 143, 51);
+}
