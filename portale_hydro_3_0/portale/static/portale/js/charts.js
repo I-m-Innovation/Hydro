@@ -631,6 +631,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     width: 2,
                 },
             },
+            // Y principale (valori) per tutti i grafici, e Y secondaria (potenza) solo per il grafico della portata
             y: {
                 beginAtZero: true,
                 ticks: {
@@ -642,6 +643,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 title: {
                     display: Boolean(cfg.yTitle),
                     text: cfg.yTitle || "",
+                    color: cfg.yTitleColor || "#004cff",
                 },
                 grid: {
                     color: "#fff",
@@ -652,13 +654,14 @@ document.addEventListener("DOMContentLoaded", () => {
                     width: 1,
                 },
             },
+            // Y secondaria per il grafico della portata, 
             ...(cfg.y2Title
                 ? {
                     yPower: {
                         beginAtZero: true,
                         position: "right",
-                        min: -200,
-                        max: 400,
+                        min: 0,
+                        max: cfg.y2Max ?? undefined,
                         ticks: {
                             maxTicksLimit: 5,
                             precision: cfg.y2TickPrecision ?? 2,
@@ -667,6 +670,7 @@ document.addEventListener("DOMContentLoaded", () => {
                         title: {
                             display: true,
                             text: cfg.y2Title,
+                            color: cfg.y2TitleColor || "#2e662b",
                         },
                         grid: {
                             drawOnChartArea: false,
@@ -838,6 +842,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ) => {
         let maxValue = 0;
         let minValue = Number.POSITIVE_INFINITY;
+        let maxValueRight = 0;
         if (isDurationCurve(cfg)) {
             (durationFilteredPoints || []).forEach((point) => {
                 const value = point?.y;
@@ -853,13 +858,16 @@ document.addEventListener("DOMContentLoaded", () => {
             });
         } else {
             datasetConfigs.forEach((ds) => {
-                if (ds.yAxisID && ds.yAxisID !== "y") {
-                    return;
-                }
                 const sourceValues = data[ds.source] || [];
                 sourceValues.forEach((value) => {
                     const parsed = Number(value);
                     if (!Number.isFinite(parsed)) {
+                        return;
+                    }
+                    if (ds.yAxisID && ds.yAxisID !== "y") {
+                        if (ds.yAxisID === "yPower" && parsed > maxValueRight) {
+                            maxValueRight = parsed;
+                        }
                         return;
                     }
                     if (parsed > maxValue) {
@@ -876,13 +884,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const boundedMax = Number.isFinite(avgNumeric)
             ? Math.max(maxValue, avgNumeric)
             : maxValue;
+        const unifiedFlowPowerMax = Math.max(boundedMax, maxValueRight);
+        const unifiedFlowPowerMaxHeadroom =
+            unifiedFlowPowerMax > 0 ? unifiedFlowPowerMax * 1.1 : 10;
 
         if (chart.options.scales?.y) {
             if (isFlowChart(cfg)) {
-                // Limite minimo dinamico per il grafico della portata
-                const hasNegativeValues = Number.isFinite(minValue) && minValue < 0;
-                chart.options.scales.y.min = hasNegativeValues ? -50 : 0;
-                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
+                chart.options.scales.y.min = 0;
+                chart.options.scales.y.max = unifiedFlowPowerMaxHeadroom;
+                chart.options.scales.y.suggestedMax = undefined;
             } else {
                 chart.options.scales.y.suggestedMax = boundedMax * 1.1;
                 if (isDurationCurve(cfg)) {
@@ -891,6 +901,23 @@ document.addEventListener("DOMContentLoaded", () => {
                         : 0;
                     chart.options.scales.y.suggestedMin = boundedMin;
                 }
+            }
+        }
+
+        if (chart.options.scales?.yPower) {
+            chart.options.scales.yPower.min = 0;
+            if (Number.isFinite(cfg.y2Max)) {
+                chart.options.scales.yPower.max = cfg.y2Max;
+                chart.options.scales.yPower.suggestedMax = undefined;
+            } else {
+                chart.options.scales.yPower.max = isFlowChart(cfg)
+                    ? unifiedFlowPowerMaxHeadroom
+                    : undefined;
+                chart.options.scales.yPower.suggestedMax = isFlowChart(cfg)
+                    ? undefined
+                    : maxValueRight > 0
+                        ? maxValueRight * 1.1
+                        : 10;
             }
         }
     };
