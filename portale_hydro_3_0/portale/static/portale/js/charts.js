@@ -138,66 +138,6 @@ document.addEventListener("DOMContentLoaded", () => {
         }
     };
 
-    const sanitizeLooseJsonNumbers = (text) => {
-        let out = "";
-        let inString = false;
-        let escaping = false;
-        let i = 0;
-        while (i < text.length) {
-            const ch = text[i];
-            if (inString) {
-                out += ch;
-                if (escaping) {
-                    escaping = false;
-                } else if (ch === "\\") {
-                    escaping = true;
-                } else if (ch === "\"") {
-                    inString = false;
-                }
-                i += 1;
-                continue;
-            }
-            if (ch === "\"") {
-                inString = true;
-                out += ch;
-                i += 1;
-                continue;
-            }
-            if (text.startsWith("-Infinity", i)) {
-                out += "null";
-                i += "-Infinity".length;
-                continue;
-            }
-            if (text.startsWith("Infinity", i)) {
-                out += "null";
-                i += "Infinity".length;
-                continue;
-            }
-            if (text.startsWith("NaN", i)) {
-                out += "null";
-                i += "NaN".length;
-                continue;
-            }
-            out += ch;
-            i += 1;
-        }
-        return out;
-    };
-
-    const tryParseJsonResponse = (text, url) => {
-        try {
-            return JSON.parse(text);
-        } catch (parseError) {
-            const sanitized = sanitizeLooseJsonNumbers(text);
-            try {
-                const parsed = JSON.parse(sanitized);
-                console.warn(`[charts] ${url} returned non-standard JSON tokens (NaN/Infinity), sanitized client-side.`);
-                return parsed;
-            } catch (sanitizedError) {
-                throw parseError;
-            }
-        }
-    };
     const fetchJsonWithRetry = async (url, retries = 3, delayMs = 2000, maxDelayMs = 20000) => {
         let lastError = null;
         for (let attempt = 0; attempt <= retries; attempt += 1) {
