@@ -75,6 +75,8 @@ class tab_statistiche_misuratori(models.Model):
         verbose_name_plural = "Tab statistiche misuratori"
 
 
+
+
 class TabTipologiaTurbina(models.Model):
     id = models.BigAutoField(primary_key=True)
     nome = models.CharField(unique=True, max_length=50)
@@ -84,3 +86,59 @@ class TabTipologiaTurbina(models.Model):
         managed = False
         db_table = 'tab_tipologia_turbina'
         verbose_name_plural = "Tab tipologia turbina"
+
+class TabImpianti(models.Model):
+    nome = models.CharField(unique=True, max_length=100)
+    indirizzo = models.CharField(max_length=100, blank=True, null=True)
+    descrizione = models.TextField(blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tab_impianti'
+        verbose_name_plural = "Tab impianti"
+
+class TabTurbine(models.Model):
+    id_impianto = models.ForeignKey(TabImpianti, models.DO_NOTHING, db_column='id_impianto')
+    id_tipologia_turbina = models.ForeignKey(TabTipologiaTurbina, models.DO_NOTHING, db_column='id_tipologia_turbina')
+    nome = models.CharField(max_length=100)
+    salto_nominale_m = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    salto_netto_m = models.DecimalField(max_digits=8, decimal_places=2, blank=True, null=True)
+    portata_nominale_ls = models.DecimalField(max_digits=10, decimal_places=3, blank=True, null=True)
+    portata_min_ls = models.DecimalField(max_digits=10, decimal_places=3, blank=True, null=True)
+    portata_max_ls = models.DecimalField(max_digits=10, decimal_places=3, blank=True, null=True)
+    potenza_nominale_kw = models.DecimalField(max_digits=10, decimal_places=2, blank=True, null=True)
+    rendimento_nominale = models.DecimalField(max_digits=6, decimal_places=4, blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    is_active = models.BooleanField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tab_turbine'
+        unique_together = (('id_impianto', 'nome'),)        
+        verbose_name_plural = "Tab turbine"
+        
+class TabTurbinaParametri(models.Model):
+    id_turbina = models.OneToOneField('TabTurbine', models.DO_NOTHING, db_column='id_turbina')
+    eta0 = models.DecimalField(max_digits=8, decimal_places=6)
+    eta_max = models.DecimalField(max_digits=8, decimal_places=6)
+    x0 = models.DecimalField(max_digits=8, decimal_places=6)
+    al = models.DecimalField(max_digits=12, decimal_places=6)
+    ar = models.DecimalField(max_digits=12, decimal_places=6)
+    kl = models.DecimalField(max_digits=6, decimal_places=3)
+    kr = models.DecimalField(max_digits=6, decimal_places=3)
+    q_min_ls = models.DecimalField(max_digits=10, decimal_places=3)
+    q_max_ls = models.DecimalField(max_digits=10, decimal_places=3)
+    metodo = models.CharField(max_length=50, blank=True, null=True)
+    note = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(blank=True, null=True)
+    is_active = models.BooleanField(blank=True, null=True)
+
+    class Meta:
+        managed = False
+        db_table = 'tab_turbina_parametri'
+        verbose_name_plural = "Tab turbina parametri"
+

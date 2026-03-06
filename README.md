@@ -668,3 +668,105 @@ Con questa funzione l'utente puo:
 - calcolare la potenza attesa (P = ρ * g * H * Q * η)
 - confrontare curve di impianti diversi con una logica coerente
 
+
+---
+
+## Linea Potenza Attesa nei Grafici (flow chart)
+
+Questa nota documenta la logica attuale della serie `Potenza attesa (kW)` mostrata nel grafico di portata.
+
+### Dove viene calcolata
+- Backend: `portale_hydro_3_0/portale/views.py` dentro `measurements_api`.
+- Frontend: `portale_hydro_3_0/portale/static/portale/js/charts.js` come dataset `expected_power_kw` su asse destro (`yPower`).
+
+### Range supportati
+- La serie viene calcolata/mostrata per tutti i range disponibili:
+  - `24h`
+  - `7d`
+  - `1m`
+  - `6m`
+  - `1y`
+  - `all`
+
+### Formula usata
+- `P[kW] = rho * g * Q[m3/s] * H[m] * eta / 1000`
+- con:
+  - `rho = 1000 kg/m3`
+  - `g = 9.81 m/s2`
+  - `Q = flow_ls / 1000`
+  - `flow_ls = COALESCE(flow_ls_smoothed, flow_ls_raw)`
+- `eta(Q)` e ottenuta con interpolazione lineare sui punti `(q_ls, eta)` di `hydro.tab_turbina_curve_points` con clamp ai bordi.
+
+### Nessun hard-code del salto H
+- `H` non ha default hard-coded.
+- Viene letto da configurazione turbina (`salto_netto_m`, fallback `salto_nominale_m`).
+- Se `H` manca o non e valido, la serie viene disabilitata (valori `null`).
+
+### Perche su alcuni misuratori non si vede la linea
+La linea non appare quando manca almeno uno di questi prerequisiti:
+1. mapping `id_misuratore -> impianto -> turbina`
+2. `head_m` valido (`> 0`)
+3. punti curva presenti in `tab_turbina_curve_points` per la turbina risolta
+
+In questi casi il backend risponde comunque con `expected_power_kw`, ma con valori `null` (linea non visibile).
+
+### Nota legenda
+- La voce in legenda puo comparire anche quando la linea non e disegnata.
+- Motivo: il dataset e definito nel grafico, ma puo risultare senza punti quando il backend restituisce `expected_power_kw` con valori `null` (tipicamente per configurazione mancante/non valida).
+
+---
+
+## Bottone Info Avanzato (Popover HTML + KaTeX)
+
+Questa sezione descrive il nuovo bottone `i+` nel grafico portata, usato per mostrare informazioni combinate (range lunghi + potenza attesa) con formattazione ricca e formula matematica renderizzata.
+
+### Perche non usare solo `data-tooltip`
+Il tooltip CSS classico (`.chart-info::after` con `data-tooltip`) e rapido ma limitato:
+- testo piatto
+- layout poco leggibile per contenuti lunghi
+- nessun supporto reale per formule matematiche
+
+Per questo, il bottone `i+` usa un popover HTML dedicato.
+
+### File coinvolti
+- Template: `portale_hydro_3_0/portale/templates/portale/includes/misuratore_panel.html`
+- Stili: `portale_hydro_3_0/portale/static/portale/css/style.css`
+- Logica JS: `portale_hydro_3_0/portale/static/portale/js/chart_info_popover.js`
+
+### Strumenti usati
+- **HTML**: struttura del bottone e del popover
+- **CSS**: styling del popover (tipografia, spaziature, box, colori)
+- **JavaScript vanilla**: apertura/chiusura/posizionamento
+- **KaTeX** (CDN): rendering formula `P = \rho \cdot g \cdot Q \cdot H \cdot \eta(Q)`
+
+Include caricati nel template:
+- `katex.min.css`
+- `katex.min.js` (defer)
+
+### Come funziona (flusso)
+1. Il bottone `i+` ha attributo `data-popover-target="expected-power-popover"`.
+2. Esiste un contenitore HTML nascosto con `id="expected-power-popover"` e classe `chart-popover is-hidden`.
+3. A `DOMContentLoaded`, `chart_info_popover.js`:
+   - trova i trigger con `[data-popover-target]`
+   - associa trigger e popover
+   - renderizza eventuali nodi con `data-katex="..."`
+4. Al click del trigger:
+   - chiude eventuali popover aperti
+   - apre il popover target
+   - lo posiziona vicino al bottone (con limiti viewport)
+5. Il popover si chiude con:
+   - click esterno
+   - tasto `Escape`
+   - resize finestra
+   - scroll
+
+### Accessibilita e UX
+- `aria-label` su trigger e popover
+- chiusura da tastiera (`Esc`)
+- contenuto strutturato con titolo, sezioni, lista e formula
+- miglior leggibilita rispetto al tooltip testuale standard
+
+### Nota implementativa
+Per il bottone `i` e disattivato il vecchio pseudo-tooltip CSS:
+- classe `chart-info-rich`
+- regola: `.chart-info.chart-info-rich::after { display: none; }`

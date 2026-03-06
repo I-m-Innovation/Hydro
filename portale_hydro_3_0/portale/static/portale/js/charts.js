@@ -77,6 +77,66 @@ document.addEventListener("DOMContentLoaded", () => {
         return Number.isFinite(parsed) ? parsed : null;
     };
 
+    const sanitizeLooseJsonNumbers = (text) => {
+        let out = "";
+        let inString = false;
+        let escaping = false;
+        let i = 0;
+        while (i < text.length) {
+            const ch = text[i];
+            if (inString) {
+                out += ch;
+                if (escaping) {
+                    escaping = false;
+                } else if (ch === "\\") {
+                    escaping = true;
+                } else if (ch === "\"") {
+                    inString = false;
+                }
+                i += 1;
+                continue;
+            }
+            if (ch === "\"") {
+                inString = true;
+                out += ch;
+                i += 1;
+                continue;
+            }
+            if (text.startsWith("-Infinity", i)) {
+                out += "null";
+                i += "-Infinity".length;
+                continue;
+            }
+            if (text.startsWith("Infinity", i)) {
+                out += "null";
+                i += "Infinity".length;
+                continue;
+            }
+            if (text.startsWith("NaN", i)) {
+                out += "null";
+                i += "NaN".length;
+                continue;
+            }
+            out += ch;
+            i += 1;
+        }
+        return out;
+    };
+
+    const tryParseJsonResponse = (text, url) => {
+        try {
+            return JSON.parse(text);
+        } catch (parseError) {
+            const sanitized = sanitizeLooseJsonNumbers(text);
+            try {
+                const parsed = JSON.parse(sanitized);
+                console.warn(`[charts] ${url} returned non-standard JSON tokens (NaN/Infinity), sanitized client-side.`);
+                return parsed;
+            } catch (sanitizedError) {
+                throw parseError;
+            }
+        }
+    };
     const fetchJsonWithRetry = async (url, retries = 3, delayMs = 2000, maxDelayMs = 20000) => {
         let lastError = null;
         for (let attempt = 0; attempt <= retries; attempt += 1) {
@@ -86,7 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!response.ok) {
                     throw new Error(`HTTP ${response.status}: ${text.slice(0, 200)}`);
                 }
-                return JSON.parse(text);
+                return tryParseJsonResponse(text, url);
             } catch (err) {
                 lastError = err;
                 if (attempt < retries) {
@@ -333,8 +393,10 @@ document.addEventListener("DOMContentLoaded", () => {
             const xValue = opts?.xValue;
             const yValue = opts?.yValue;
             const yZeroValue = opts?.yZeroValue;
+            const yZeroValueRight = opts?.yZeroValueRight;
             const xScale = chart.scales?.x;
             const yScale = chart.scales?.y;
+            const yScaleRight = chart.scales?.yPower;
             const { ctx, chartArea } = chart;
             if (!xScale || !chartArea) {
                 return;
@@ -361,6 +423,24 @@ document.addEventListener("DOMContentLoaded", () => {
                     ctx.lineWidth = opts?.yZeroLineWidth ?? opts?.lineWidth ?? 1;
                     ctx.strokeStyle = opts?.yZeroColor || "rgba(17, 24, 39, 0.6)";
                     ctx.setLineDash(opts?.yZeroDash || []);
+                    ctx.stroke();
+                }
+            }
+            if (
+                yZeroValueRight !== null &&
+                yZeroValueRight !== undefined &&
+                yScaleRight
+            ) {
+                const y0Right = yScaleRight.getPixelForValue(yZeroValueRight);
+                if (Number.isFinite(y0Right)) {
+                    ctx.beginPath();
+                    ctx.moveTo(chartArea.left, y0Right);
+                    ctx.lineTo(chartArea.right, y0Right);
+                    ctx.lineWidth =
+                        opts?.yZeroRightLineWidth ?? opts?.yZeroLineWidth ?? opts?.lineWidth ?? 1;
+                    ctx.strokeStyle =
+                        opts?.yZeroRightColor || "rgba(22, 163, 74, 0.85)";
+                    ctx.setLineDash(opts?.yZeroRightDash || []);
                     ctx.stroke();
                 }
             }
@@ -404,7 +484,9 @@ document.addEventListener("DOMContentLoaded", () => {
         afterBuildTicks(chart, _args, opts) {
             const yValue = opts?.yValue;
             const yZeroValue = opts?.yZeroValue;
+            const yZeroValueRight = opts?.yZeroValueRight;
             const yScale = chart.scales?.y;
+            const yScaleRight = chart.scales?.yPower;
             if (!yScale || !Array.isArray(yScale.ticks)) {
                 return;
             }
@@ -424,6 +506,20 @@ document.addEventListener("DOMContentLoaded", () => {
                 if (!exists && Number.isFinite(Number(yZeroValue))) {
                     yScale.ticks.push({ value: Number(yZeroValue) });
                     yScale.ticks.sort((a, b) => a.value - b.value);
+                }
+            }
+            if (
+                yScaleRight &&
+                Array.isArray(yScaleRight.ticks) &&
+                yZeroValueRight !== null &&
+                yZeroValueRight !== undefined
+            ) {
+                const existsRight = yScaleRight.ticks.some(
+                    (tick) => Number(tick.value) === Number(yZeroValueRight),
+                );
+                if (!existsRight && Number.isFinite(Number(yZeroValueRight))) {
+                    yScaleRight.ticks.push({ value: Number(yZeroValueRight) });
+                    yScaleRight.ticks.sort((a, b) => a.value - b.value);
                 }
             }
         },
@@ -454,6 +550,8 @@ document.addEventListener("DOMContentLoaded", () => {
             order: ds.order,
             spanGaps: ds.spanGaps,
             showLine: ds.showLine,
+            yAxisID: ds.yAxisID || "y",
+            hidden: Boolean(ds.hidden),
         })),
         ...(averageDataset ? [averageDataset] : []),
     ];
@@ -502,6 +600,10 @@ document.addEventListener("DOMContentLoaded", () => {
                             yZeroColor: "rgba(31, 41, 55, 0.8)",
                             yZeroLineWidth: 2,
                             yZeroDash: [8, 4],
+                            yZeroValueRight: 0,
+                            yZeroRightColor: "rgba(22, 163, 74, 0.9)",
+                            yZeroRightLineWidth: 2,
+                            yZeroRightDash: [4, 4],
                         }
                         : {},
             tooltip: {
@@ -589,6 +691,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     width: 2,
                 },
             },
+            // Y principale (valori) per tutti i grafici, e Y secondaria (potenza) solo per il grafico della portata
             y: {
                 beginAtZero: true,
                 ticks: {
@@ -600,6 +703,7 @@ document.addEventListener("DOMContentLoaded", () => {
                 title: {
                     display: Boolean(cfg.yTitle),
                     text: cfg.yTitle || "",
+                    color: cfg.yTitleColor || "#004cff",
                 },
                 grid: {
                     color: "#fff",
@@ -610,6 +714,36 @@ document.addEventListener("DOMContentLoaded", () => {
                     width: 1,
                 },
             },
+            // Y secondaria per il grafico della portata, 
+            ...(cfg.y2Title
+                ? {
+                    yPower: {
+                        beginAtZero: true,
+                        position: "right",
+                        min: 0,
+                        max: cfg.y2Max ?? undefined,
+                        ticks: {
+                            maxTicksLimit: 5,
+                            precision: cfg.y2TickPrecision ?? 2,
+                            autoSkip: true,
+                        },
+                        title: {
+                            display: true,
+                            text: cfg.y2Title,
+                            color: cfg.y2TitleColor || "#2e662b",
+                        },
+                        grid: {
+                            drawOnChartArea: false,
+                            color: "#fff",
+                        },
+                        border: {
+                            display: true,
+                            color: "rgba(17, 24, 39, 0.2)",
+                            width: 1,
+                        },
+                    },
+                }
+                : {}),
         },
     });
 
@@ -768,6 +902,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ) => {
         let maxValue = 0;
         let minValue = Number.POSITIVE_INFINITY;
+        let maxValueRight = 0;
         if (isDurationCurve(cfg)) {
             (durationFilteredPoints || []).forEach((point) => {
                 const value = point?.y;
@@ -789,6 +924,12 @@ document.addEventListener("DOMContentLoaded", () => {
                     if (!Number.isFinite(parsed)) {
                         return;
                     }
+                    if (ds.yAxisID && ds.yAxisID !== "y") {
+                        if (ds.yAxisID === "yPower" && parsed > maxValueRight) {
+                            maxValueRight = parsed;
+                        }
+                        return;
+                    }
                     if (parsed > maxValue) {
                         maxValue = parsed;
                     }
@@ -803,13 +944,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const boundedMax = Number.isFinite(avgNumeric)
             ? Math.max(maxValue, avgNumeric)
             : maxValue;
+        const unifiedFlowPowerMax = Math.max(boundedMax, maxValueRight);
+        const unifiedFlowPowerMaxHeadroom =
+            unifiedFlowPowerMax > 0 ? unifiedFlowPowerMax * 1.1 : 10;
 
         if (chart.options.scales?.y) {
             if (isFlowChart(cfg)) {
-                // Limite minimo dinamico per il grafico della portata
-                const hasNegativeValues = Number.isFinite(minValue) && minValue < 0;
-                chart.options.scales.y.min = hasNegativeValues ? -50 : 0;
-                chart.options.scales.y.suggestedMax = boundedMax * 1.1;
+                chart.options.scales.y.min = 0;
+                chart.options.scales.y.max = unifiedFlowPowerMaxHeadroom;
+                chart.options.scales.y.suggestedMax = undefined;
             } else {
                 chart.options.scales.y.suggestedMax = boundedMax * 1.1;
                 if (isDurationCurve(cfg)) {
@@ -818,6 +961,23 @@ document.addEventListener("DOMContentLoaded", () => {
                         : 0;
                     chart.options.scales.y.suggestedMin = boundedMin;
                 }
+            }
+        }
+
+        if (chart.options.scales?.yPower) {
+            chart.options.scales.yPower.min = 0;
+            if (Number.isFinite(cfg.y2Max)) {
+                chart.options.scales.yPower.max = cfg.y2Max;
+                chart.options.scales.yPower.suggestedMax = undefined;
+            } else {
+                chart.options.scales.yPower.max = isFlowChart(cfg)
+                    ? unifiedFlowPowerMaxHeadroom
+                    : undefined;
+                chart.options.scales.yPower.suggestedMax = isFlowChart(cfg)
+                    ? undefined
+                    : maxValueRight > 0
+                        ? maxValueRight * 1.1
+                        : 10;
             }
         }
     };
@@ -1006,7 +1166,8 @@ document.addEventListener("DOMContentLoaded", () => {
             fill: true,
             useApi: true,
             xScaleType: "linear",
-            xTitle: "",
+            xTitle: "Timestamp",
+            yTitle: "Portata (l/s)",
             xTicksCallback: function (value) {
                 if (value === this.min || value === this.max) {
                     return formatTimestampFull(value);
@@ -1028,6 +1189,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     color: "#6b728089",
                     fill: false,
                     source: "flow_ls_raw",
+                    yAxisID: "y",
                     order: 2,
                     spanGaps: false,
                     borderWidth: 1,
@@ -1038,13 +1200,28 @@ document.addEventListener("DOMContentLoaded", () => {
                     fillColor: "rgba(83, 206, 255, 0.54)",
                     fill: true,
                     source: "flow_ls_smoothed",
+                    yAxisID: "y",
                     order: 1,
                     pointRadius: 0,
                     pointHoverRadius: 2,
                     spanGaps: false,
                     borderWidth: 1,
                 },
+                {
+                    label: "Potenza attesa (kW)",
+                    color: "#16a34a",
+                    fill: false,
+                    source: "expected_power_kw",
+                    yAxisID: "yPower",
+                    order: 0,
+                    pointRadius: 0,
+                    pointHoverRadius: 2,
+                    spanGaps: false,
+                    borderWidth: 2,
+                },
             ],
+            y2Title: "Potenza attesa (kW)",
+            y2TickPrecision: 2,
         },
         {
             id: "chart-fluid-velocity",
@@ -1387,6 +1564,30 @@ document.addEventListener("DOMContentLoaded", () => {
     });
 
     const zoomButtons = grid.querySelectorAll(".chart-zoom");
+    let activeZoomCard = null;
+
+    const applyZoomCardHeight = (card) => {
+        if (!card) {
+            return;
+        }
+        const footer = document.querySelector(".site-footer");
+        const cardRect = card.getBoundingClientRect();
+        const footerTop = footer
+            ? footer.getBoundingClientRect().top
+            : window.innerHeight;
+        const safeBottomGap = 8;
+        const available = Math.floor(footerTop - cardRect.top - safeBottomGap);
+        const clamped = Math.max(340, Math.min(available, 1200));
+        card.style.setProperty("--zoom-card-height", `${clamped}px`);
+    };
+
+    const clearZoomCardHeight = (card) => {
+        if (!card) {
+            return;
+        }
+        card.style.removeProperty("--zoom-card-height");
+    };
+
     zoomButtons.forEach((button) => {
         button.addEventListener("click", () => {
             const targetId = button.getAttribute("data-target");
@@ -1415,13 +1616,17 @@ document.addEventListener("DOMContentLoaded", () => {
                         card.classList.remove("is-zoomed");
                     }
                 });
+                activeZoomCard = targetCard;
+                applyZoomCardHeight(targetCard);
                 button.textContent = "Esci";
             } else {
                 grid.classList.remove("is-zoomed");
                 cards.forEach((card) => {
                     card.classList.remove("is-zoomed");
                     card.classList.remove("is-dim");
+                    clearZoomCardHeight(card);
                 });
+                activeZoomCard = null;
                 zoomButtons.forEach((btn) => {
                     btn.textContent = "Zoom";
                 });
@@ -1440,5 +1645,16 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             });
         });
+    });
+
+    window.addEventListener("resize", () => {
+        if (grid.classList.contains("is-zoomed") && activeZoomCard) {
+            applyZoomCardHeight(activeZoomCard);
+            requestAnimationFrame(() => {
+                instances.forEach((chartInstance) => {
+                    chartInstance.resize();
+                });
+            });
+        }
     });
 });
