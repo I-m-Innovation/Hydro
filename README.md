@@ -451,3 +451,322 @@ python -c "from config.settings import *; print('Config OK')"
 - **Esecuzione on-demand**: Job eseguibili manualmente per testing e verifica
 
 ---
+
+---
+
+## Pelton Turbine Data & Yield Curves (data_pelton_yield)
+
+This section documents the JSON structure used to configure Pelton datasets. If you switch to JSON, use this schema.
+
+```json
+{
+  "DBCAN": {
+    "name": "Canaletta",
+    "path": "csv_all\\raw\\DBCAN.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBCAN_filtered_H_fixed.csv",
+    "head": 117,
+    "flow": [],
+    "yield": []
+  },
+  "DBPAR": {
+    "name": "Partitore",
+    "path": "csv_all\\raw\\DBPAR.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBPAR_filtered_H_fixed.csv",
+    "head": 346.24,
+    "flow": [],
+    "yield": []
+  },
+  "DBST": {
+    "name": "San Teodoro",
+    "path": "csv_all\\raw\\DBST.csv",
+    "path_filtered": "csv_all\\h_fixed\\DBST_filtered_H_fixed.csv",
+    "head": 347.24,
+    "flow": [],
+    "yield": []
+  }
+}
+```
+
+Field meanings:
+- `DBCAN`, `DBPAR`, `DBST`: plant identifiers. Each key maps to a plant configuration object.
+- `name`: human-readable plant name.
+- `path`: relative path to the raw input CSV for that plant.
+- `path_filtered`: legacy output path for H_fixed processing (currently not used in the H_calculated flow).
+- `head`: fixed head value in meters (historical reference; H_calculated uses pressure instead).
+- `flow`: reserved list for flow values (currently unused).
+- `yield`: reserved list for efficiency values (currently unused).
+
+---
+
+## Curva di Rendimento: Problema Reale e Funzione di Fit
+
+### Problema che stiamo risolvendo
+I dati reali di rendimento (η) in funzione della portata (Q) sono rumorosi e non seguono una forma perfettamente simmetrica:
+- a basse portate la curva cresce rapidamente
+- vicino al picco si stabilizza
+- a portate alte scende piu lentamente
+
+Per il portale serve una **funzione continua e stabile** che approssimi i dati reali e permetta:
+- simulazioni rapide (dato Q, ottengo η)
+- confronti tra impianti
+- grafici puliti e interpretabili
+
+### Funzione originale (simmetrica)
+```
+?(x) = ?_max * (1 - a (x - 1)^2)
+```
+dove:
+- `x = Q / Q_max`
+- `?_max` = rendimento massimo
+- `a` = coefficiente di curvatura
+
+Questa formula e' semplice ma troppo rigida: impone simmetria e tende a partire da valori troppo alti.
+
+### Funzione aggiornata (asimmetrica, picco a x=1)
+Per seguire meglio i dati reali, usiamo una versione **asimmetrica** a sinistra/destra del picco:
+```
+Left (x<=1):
+? = ?0 + (?_max - ?0) * (1 - aL * |x - 1|^kL)
+
+Right (x>1):
+? = ?0 + (?_max - ?0) * (1 - aR * |x - 1|^kR)
+```
+
+Interpretazione dei parametri:
+- `?0`: rendimento di base (stimato dal 5? percentile)
+- `?_max`: media del top 5% dei rendimenti (robusta al rumore)
+- `Q_max`: portata corrispondente al picco di rendimento osservato
+- `aL`, `aR`: curvatura a sinistra e destra del picco
+- `kL`, `kR`: esponenti che controllano quanto rapidamente la curva scende
+
+### Funzione aggiornata (asimmetrica, x normalizzato 0..1 con picco interno)
+Per avere un asse x normalizzato tra 0 e 1, usiamo:
+```
+x = (Q - Q_min) / (Q_max - Q_min)
+```
+Il picco non e' in x=1, ma in un valore interno `x0`:
+```
+x0 = argmax(?) nella scala normalizzata
+```
+La formula diventa:
+```
+Left (x<=x0):
+eta = eta_0 + (eta_max - eta_0) * (1 - aL * |x - x0|^kL)
+
+Right (x>x0):
+eta = eta_0 + (eta_max - eta_0) * (1 - aR * |x - x0|^kR)
+```
+
+Questa versione permette:
+- range 0..1 sull'asse x
+- picco nella posizione reale dei dati
+- confronto diretto tra impianti con scale normalizzate
+
+### Calcolo dettagliato delle curve di fit
+
+**Dati in ingresso**
+- Si usa la curva media: `Portata_bin` (Q) e `Rendimento_mean` (?) dal CSV `rendimento_medio_per_turbine_pelton.csv`.
+- Vengono esclusi gli outlier (`Rendimento_mean_is_outlier == True`) e i valori non fisici (? < 0 o ? > 1).
+
+**Normalizzazione dell'asse x (0..1)**
+```
+Q_min = min(Q)
+Q_max = max(Q)
+x = (Q - Q_min) / (Q_max - Q_min)
+x0 = argmax(?) nella scala normalizzata
+```
+
+**Stima di ?_max e ?0**
+- `?_max` = media del **top 5%** dei rendimenti (piu' robusto del max assoluto)
+- `?0` = **5? percentile** dei rendimenti (base della curva)
+
+**Curva simmetrica**
+Si impone una forma simmetrica attorno al picco `x0`:
+```
+? = ?0 + (?_max - ?0) * (1 - a (x - x0)^2)
+```
+Il coefficiente `a` si calcola con una formula chiusa:
+```
+z = (x - x0)
+b = ? [ z^2 * (?_max - ?) ] / ? [ z^4 ]
+a = b / (?_max - ?0)
+```
+
+**Curva asimmetrica (sinistra/destra)**
+La versione asimmetrica permette due curvature diverse:
+```
+Left (x<=x0):
+? = ?0 + (?_max - ?0) * (1 - aL * |x - x0|^kL)
+
+Right (x>x0):
+? = ?0 + (?_max - ?0) * (1 - aR * |x - x0|^kR)
+```
+I parametri `kL`, `kR` vengono scelti con una **grid search** nel range [2..7] con step 0.25.
+Per ogni coppia (kL, kR) si calcolano `aL` e `aR` con formula chiusa:
+```
+zL = |x - x0|^kL   (solo x<=x0)
+zR = |x - x0|^kR   (solo x>x0)
+
+bL = ? [ zL * (?_max - ?) ] / ? [ zL^2 ]
+bR = ? [ zR * (?_max - ?) ] / ? [ zR^2 ]
+
+aL = bL / (?_max - ?0)
+aR = bR / (?_max - ?0)
+```
+La coppia (kL, kR) che minimizza l'errore quadratico totale viene selezionata.
+
+---
+
+## Flusso Dati Rendimento/Potenza (Portale)
+
+Questa sezione descrive come le varie parti (frontend, backend, DB) interagiscono per mostrare rendimento e potenza nel portale.
+
+### 1) Frontend
+- La pagina del misuratore carica `charts.js` e `rendimento.js`.
+- `rendimento.js` legge `id_misuratore` dal canvas (attributo `data-misuratore`).
+- Fa una chiamata HTTP:
+  ```
+  /portale/api/rendimento-potenza/?id_misuratore=...
+  ```
+
+### 2) Backend (Django)
+- `urls.py` mappa l'endpoint su `rendimento_potenza_api`.
+- La view:
+  - valida `id_misuratore`
+  - calcola **media portata ultimi 30 min**
+  - legge **parametri di fit** della turbina
+  - calcola `η` e `P`
+  - ritorna JSON con valori numerici
+
+Esempio risposta:
+```
+{
+  "flow_ls_avg_30m": 12.3,
+  "eta": 0.74,
+  "power_kw": 26.6,
+  "head_m": 183,
+  "x": 0.31
+}
+```
+
+### 3) Database
+Il backend legge da:
+- `tab_measurements_clean` (portata ultimi 30 min)
+- `tab_misuratori` (nome impianto)
+- `tab_impianti`, `tab_turbine`, `tab_turbina_parametri` (parametri fit)
+
+### 4) Frontend aggiorna UI
+- `rendimento.js` aggiorna i campi della tabella:
+  - Rendimento medio 30 min
+  - Potenza attesa 30 min
+  - Salto H (default DB, modificabile)
+- Se l'utente cambia H, la potenza viene ricalcolata lato client.
+
+### Perche serve nel portale
+Con questa funzione l'utente puo:
+- inserire una portata Q e ottenere un rendimento stimato
+- calcolare la potenza attesa (P = ρ * g * H * Q * η)
+- confrontare curve di impianti diversi con una logica coerente
+
+
+---
+
+## Linea Potenza Attesa nei Grafici (flow chart)
+
+Questa nota documenta la logica attuale della serie `Potenza attesa (kW)` mostrata nel grafico di portata.
+
+### Dove viene calcolata
+- Backend: `portale_hydro_3_0/portale/views.py` dentro `measurements_api`.
+- Frontend: `portale_hydro_3_0/portale/static/portale/js/charts.js` come dataset `expected_power_kw` su asse destro (`yPower`).
+
+### Range supportati
+- La serie viene calcolata/mostrata per tutti i range disponibili:
+  - `24h`
+  - `7d`
+  - `1m`
+  - `6m`
+  - `1y`
+  - `all`
+
+### Formula usata
+- `P[kW] = rho * g * Q[m3/s] * H[m] * eta / 1000`
+- con:
+  - `rho = 1000 kg/m3`
+  - `g = 9.81 m/s2`
+  - `Q = flow_ls / 1000`
+  - `flow_ls = COALESCE(flow_ls_smoothed, flow_ls_raw)`
+- `eta(Q)` e ottenuta con interpolazione lineare sui punti `(q_ls, eta)` di `hydro.tab_turbina_curve_points` con clamp ai bordi.
+
+### Nessun hard-code del salto H
+- `H` non ha default hard-coded.
+- Viene letto da configurazione turbina (`salto_netto_m`, fallback `salto_nominale_m`).
+- Se `H` manca o non e valido, la serie viene disabilitata (valori `null`).
+
+### Perche su alcuni misuratori non si vede la linea
+La linea non appare quando manca almeno uno di questi prerequisiti:
+1. mapping `id_misuratore -> impianto -> turbina`
+2. `head_m` valido (`> 0`)
+3. punti curva presenti in `tab_turbina_curve_points` per la turbina risolta
+
+In questi casi il backend risponde comunque con `expected_power_kw`, ma con valori `null` (linea non visibile).
+
+### Nota legenda
+- La voce in legenda puo comparire anche quando la linea non e disegnata.
+- Motivo: il dataset e definito nel grafico, ma puo risultare senza punti quando il backend restituisce `expected_power_kw` con valori `null` (tipicamente per configurazione mancante/non valida).
+
+---
+
+## Bottone Info Avanzato (Popover HTML + KaTeX)
+
+Questa sezione descrive il nuovo bottone `i+` nel grafico portata, usato per mostrare informazioni combinate (range lunghi + potenza attesa) con formattazione ricca e formula matematica renderizzata.
+
+### Perche non usare solo `data-tooltip`
+Il tooltip CSS classico (`.chart-info::after` con `data-tooltip`) e rapido ma limitato:
+- testo piatto
+- layout poco leggibile per contenuti lunghi
+- nessun supporto reale per formule matematiche
+
+Per questo, il bottone `i+` usa un popover HTML dedicato.
+
+### File coinvolti
+- Template: `portale_hydro_3_0/portale/templates/portale/includes/misuratore_panel.html`
+- Stili: `portale_hydro_3_0/portale/static/portale/css/style.css`
+- Logica JS: `portale_hydro_3_0/portale/static/portale/js/chart_info_popover.js`
+
+### Strumenti usati
+- **HTML**: struttura del bottone e del popover
+- **CSS**: styling del popover (tipografia, spaziature, box, colori)
+- **JavaScript vanilla**: apertura/chiusura/posizionamento
+- **KaTeX** (CDN): rendering formula `P = \rho \cdot g \cdot Q \cdot H \cdot \eta(Q)`
+
+Include caricati nel template:
+- `katex.min.css`
+- `katex.min.js` (defer)
+
+### Come funziona (flusso)
+1. Il bottone `i+` ha attributo `data-popover-target="expected-power-popover"`.
+2. Esiste un contenitore HTML nascosto con `id="expected-power-popover"` e classe `chart-popover is-hidden`.
+3. A `DOMContentLoaded`, `chart_info_popover.js`:
+   - trova i trigger con `[data-popover-target]`
+   - associa trigger e popover
+   - renderizza eventuali nodi con `data-katex="..."`
+4. Al click del trigger:
+   - chiude eventuali popover aperti
+   - apre il popover target
+   - lo posiziona vicino al bottone (con limiti viewport)
+5. Il popover si chiude con:
+   - click esterno
+   - tasto `Escape`
+   - resize finestra
+   - scroll
+
+### Accessibilita e UX
+- `aria-label` su trigger e popover
+- chiusura da tastiera (`Esc`)
+- contenuto strutturato con titolo, sezioni, lista e formula
+- miglior leggibilita rispetto al tooltip testuale standard
+
+### Nota implementativa
+Per il bottone `i` e disattivato il vecchio pseudo-tooltip CSS:
+- classe `chart-info-rich`
+- regola: `.chart-info.chart-info-rich::after { display: none; }`

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from bisect import bisect_right
 import time
 import re
 
@@ -6,6 +7,7 @@ from django.http import JsonResponse
 from django.shortcuts import render
 from django.db import connection
 from django.db.models import Max
+from django.utils import timezone
 # from django.contrib.auth.decorators import login_required
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
@@ -13,6 +15,9 @@ from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misu
 CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
 MAX_ID_MISURATORE_LEN = 128
 ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
+EXPECTED_POWER_RANGES = set(ALLOWED_RANGE_KEYS)
+WATER_DENSITY_KG_M3 = 1000.0
+GRAVITY_M_S2 = 9.81
 
 
 def validate_id_misuratore(raw_value):
@@ -29,6 +34,102 @@ def validate_id_misuratore(raw_value):
     if not any(not ch.isspace() for ch in raw_value):
         return None, "id_misuratore cannot be only whitespace"
     return raw_value, None
+
+
+def _safe_float(value):
+    if value is None:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed
+
+
+def _pick_flow_ls(flow_ls_raw, flow_ls_smoothed):
+    """
+    Use smoothed flow when present, otherwise fallback to raw flow.
+    """
+    flow = _safe_float(flow_ls_smoothed)
+    if flow is not None:
+        return flow
+    return _safe_float(flow_ls_raw)
+
+
+def _get_turbina_curve_points_by_id(id_turbina):
+    """
+    Returns two sorted arrays (q_points_ls, eta_points) from tab_turbina_curve_points.
+    Points with null q_ls or null eta are skipped.
+    """
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT q_ls, eta
+            FROM hydro.tab_turbina_curve_points
+            WHERE id_turbina = %s
+            AND q_ls IS NOT NULL
+            AND eta IS NOT NULL
+            ORDER BY q_ls ASC
+            """,
+            [id_turbina],
+        )
+        rows = cursor.fetchall()
+
+    q_points_ls = []
+    eta_points = []
+    for q_ls, eta in rows:
+        q_val = _safe_float(q_ls)
+        eta_val = _safe_float(eta)
+        if q_val is None or eta_val is None:
+            continue
+        q_points_ls.append(q_val)
+        eta_points.append(eta_val)
+    return q_points_ls, eta_points
+
+
+def _interpolate_eta_linear_clamped(flow_ls, q_points_ls, eta_points):
+    """
+    Linear interpolation with clamp:
+    - below first q -> first eta
+    - above last q -> last eta
+    """
+    if flow_ls is None or not q_points_ls or not eta_points:
+        return None
+    if len(q_points_ls) == 1:
+        return eta_points[0]
+
+    if flow_ls <= q_points_ls[0]:
+        return eta_points[0]
+    if flow_ls >= q_points_ls[-1]:
+        return eta_points[-1]
+
+    right_idx = bisect_right(q_points_ls, flow_ls)
+    left_idx = right_idx - 1
+    q0 = q_points_ls[left_idx]
+    q1 = q_points_ls[right_idx]
+    eta0 = eta_points[left_idx]
+    eta1 = eta_points[right_idx]
+
+    if q1 <= q0:
+        return eta0
+    ratio = (flow_ls - q0) / (q1 - q0)
+    return eta0 + (eta1 - eta0) * ratio
+
+
+def _compute_expected_power_kw(flow_ls, head_m, eta):
+    """
+    P[kW] = rho * g * Q[m3/s] * H[m] * eta / 1000
+    where Q[m3/s] = flow_ls / 1000.
+    """
+    if flow_ls is None or head_m is None or eta is None:
+        return None
+    if head_m <= 0:
+        return None
+    if flow_ls <= 0:
+        return 0.0
+    q_m3s = flow_ls / 1000.0
+    power_kw = (WATER_DENSITY_KG_M3 * GRAVITY_M_S2 * q_m3s * head_m * eta) / 1000.0
+    return round(max(0.0, power_kw), 2)
 
 # @login_required
 def home(request):
@@ -63,6 +164,15 @@ def measurements_api(request):
             status=400,
         )
     use_mv = range_key in {"6m", "1y", "all"}
+    should_compute_expected_power = range_key in EXPECTED_POWER_RANGES
+    expected_setup = None
+    if should_compute_expected_power:
+        expected_setup = _get_expected_power_config_for_misuratore(id_misuratore)
+        if not expected_setup:
+            print(
+                "[measurements_api] "
+                f"id={id_misuratore} range={range_key} expected_power=disabled (missing config)"
+            )
 
     max_points_by_range = {
         "24h": None,
@@ -99,6 +209,7 @@ def measurements_api(request):
                         "flow_ls_raw": [],
                         "flow_ls_smoothed": [],
                         "is_outlier": [],
+                        "expected_power_kw": [],
                     }
                 )
 
@@ -130,6 +241,7 @@ def measurements_api(request):
                         "flow_ls_raw": [],
                         "flow_ls_smoothed": [],
                         "is_outlier": [],
+                        "expected_power_kw": [],
                     }
                 )
 
@@ -151,6 +263,7 @@ def measurements_api(request):
             flow_raw = []
             flow_smoothed = []
             outliers = []
+            expected_power = []
             i = 0
             while True:
                 chunk = cursor.fetchmany(5000)
@@ -172,6 +285,22 @@ def measurements_api(request):
                         else None
                     )
                     outliers.append(None)
+                    if expected_setup:
+                        flow_used = _pick_flow_ls(flow_ls_raw_avg, flow_ls_smoothed_avg)
+                        eta = _interpolate_eta_linear_clamped(
+                            flow_used,
+                            expected_setup["q_points_ls"],
+                            expected_setup["eta_points"],
+                        )
+                        expected_power.append(
+                            _compute_expected_power_kw(
+                                flow_used,
+                                expected_setup["head_m"],
+                                eta,
+                            )
+                        )
+                    else:
+                        expected_power.append(None)
                     i += 1
 
         data = {
@@ -179,6 +308,7 @@ def measurements_api(request):
             "flow_ls_raw": flow_raw,
             "flow_ls_smoothed": flow_smoothed,
             "is_outlier": outliers,
+            "expected_power_kw": expected_power,
         }
         print(
             "[measurements_api] "
@@ -223,6 +353,7 @@ def measurements_api(request):
                     "flow_ls_raw": [],
                     "flow_ls_smoothed": [],
                     "is_outlier": [],
+                    "expected_power_kw": [],
                 }
             )
         step = max(1, total // max_points)
@@ -240,6 +371,7 @@ def measurements_api(request):
     flow_raw = []
     flow_smoothed = []
     outliers = []
+    expected_power = []
     for i, (data_misurazione, flow_ls_raw, flow_ls_smoothed, is_outlier) in enumerate(
         rows.iterator(chunk_size=5000)
     ):
@@ -249,12 +381,29 @@ def measurements_api(request):
         flow_raw.append(flow_ls_raw)
         flow_smoothed.append(flow_ls_smoothed)
         outliers.append(is_outlier)
+        if expected_setup:
+            flow_used = _pick_flow_ls(flow_ls_raw, flow_ls_smoothed)
+            eta = _interpolate_eta_linear_clamped(
+                flow_used,
+                expected_setup["q_points_ls"],
+                expected_setup["eta_points"],
+            )
+            expected_power.append(
+                _compute_expected_power_kw(
+                    flow_used,
+                    expected_setup["head_m"],
+                    eta,
+                )
+            )
+        else:
+            expected_power.append(None)
 
     data = {
         "timestamps": timestamps,
         "flow_ls_raw": flow_raw,
         "flow_ls_smoothed": flow_smoothed,
         "is_outlier": outliers,
+        "expected_power_kw": expected_power,
     }
     print(
         "[measurements_api] "
@@ -262,7 +411,6 @@ def measurements_api(request):
         f"returned_points={len(timestamps)} step={step}"
     )
     return JsonResponse(data)
-
 
 # @login_required
 def duration_curve_api(request):
@@ -355,7 +503,7 @@ def flow_histogram_api(request):
             SELECT bin_index, range_start, range_end, count
             FROM hydro.tab_flow_histogram
             WHERE id_misuratore = %s
-              AND updated_at = (SELECT updated_at FROM latest)
+            AND updated_at = (SELECT updated_at FROM latest)
             ORDER BY bin_index
             """,
             [id_misuratore, id_misuratore],
@@ -468,3 +616,261 @@ def led_status_api(request):
         ]
     }
     return JsonResponse(data)
+
+
+def _get_latest_flow_avg_30m(id_misuratore):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT MAX(data_misurazione)
+            FROM hydro.tab_measurements_clean
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        latest_ts = cursor.fetchone()[0]
+        if not latest_ts:
+            return None, None
+
+        cutoff = latest_ts - timedelta(minutes=30)
+        cursor.execute(
+            """
+            SELECT AVG(flow_ls_smoothed)
+            FROM hydro.tab_measurements_clean
+            WHERE id_misuratore = %s
+                AND data_misurazione >= %s
+                AND data_misurazione <= %s
+            """,
+            [id_misuratore, cutoff, latest_ts],
+        )
+        flow_ls_avg = cursor.fetchone()[0]
+
+    return latest_ts, flow_ls_avg
+
+
+def _get_turbina_params_for_misuratore(id_misuratore):
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT name
+            FROM hydro.tab_misuratori
+            WHERE id_misuratore = %s
+            """,
+            [id_misuratore],
+        )
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        impianto_name = row[0]
+        cursor.execute(
+            """
+            SELECT  t.id,
+                    t.salto_netto_m,
+                    t.salto_nominale_m,
+                    p.eta0,
+                    p.eta_max,
+                    p.x0,
+                    p.aL,
+                    p.aR,
+                    p.kL,
+                    p.kR,
+                    p.q_min_ls,
+                    p.q_max_ls
+            FROM hydro.tab_turbine t
+            JOIN hydro.tab_impianti i ON i.id = t.id_impianto
+            JOIN hydro.tab_turbina_parametri p ON p.id_turbina = t.id
+            WHERE i.nome = %s
+            AND p.is_active = TRUE
+            ORDER BY t.id
+            LIMIT 1
+            """,
+            [impianto_name],
+        )
+        return cursor.fetchone()
+
+
+def _get_expected_power_config_for_misuratore(id_misuratore):
+    """
+    Resolve runtime configuration for expected power from DB:
+    - turbine id linked to the meter
+    - net head (no hard-coded default)
+    - efficiency curve points (q_ls, eta)
+    """
+    params = _get_turbina_params_for_misuratore(id_misuratore)
+    if not params:
+        return None
+
+    turbina_id = params[0]
+    salto_netto_m = _safe_float(params[1])
+    salto_nominale_m = _safe_float(params[2])
+    head_m = salto_netto_m if salto_netto_m is not None else salto_nominale_m
+    if head_m is None or head_m <= 0:
+        return None
+
+    q_points_ls, eta_points = _get_turbina_curve_points_by_id(turbina_id)
+    if not q_points_ls or not eta_points:
+        return None
+
+    return {
+        "turbina_id": turbina_id,
+        "head_m": head_m,
+        "q_points_ls": q_points_ls,
+        "eta_points": eta_points,
+    }
+
+
+def _compute_eta_potenza(flow_ls_avg, params):
+    (
+        turbina_id,
+        salto_netto_m,
+        salto_nominale_m,
+        eta0,
+        eta_max,
+        x0,
+        aL,
+        aR,
+        kL,
+        kR,
+        q_min_ls,
+        q_max_ls,
+    ) = params
+
+    head_m = float(salto_netto_m) if salto_netto_m is not None else float(salto_nominale_m or 0)
+    denom_q = float(q_max_ls - q_min_ls) if q_max_ls is not None and q_min_ls is not None else 0.0
+    if denom_q <= 0:
+        return {
+            "eta": None,
+            "power_kw": None,
+            "head_m": head_m if head_m > 0 else None,
+            "x": None,
+            "turbina_id": turbina_id,
+        }
+
+    x = (flow_ls_avg - float(q_min_ls)) / denom_q
+    x = max(0.0, min(1.0, x))
+
+    if x <= float(x0):
+        eta = float(eta0) + (float(eta_max) - float(eta0)) * (
+            1 - float(aL) * abs(x - float(x0)) ** float(kL)
+        )
+    else:
+        eta = float(eta0) + (float(eta_max) - float(eta0)) * (
+            1 - float(aR) * abs(x - float(x0)) ** float(kR)
+        )
+
+    q_m3s = flow_ls_avg / 1000.0
+    power_kw = 9.81 * head_m * q_m3s * eta if head_m > 0 else None
+    if power_kw is not None:
+        power_kw = max(0.0, power_kw)
+
+    return {
+        "eta": eta,
+        "power_kw": power_kw,
+        "head_m": head_m if head_m > 0 else None,
+        "x": x,
+        "turbina_id": turbina_id,
+    }
+
+
+def rendimento_potenza_api(request):
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    latest_ts, flow_ls_avg = _get_latest_flow_avg_30m(id_misuratore)
+    if latest_ts is None:
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": None,
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": True,
+            }
+        )
+    if latest_ts < (timezone.now() - timedelta(minutes=30)):
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": None,
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": True,
+            }
+        )
+
+    params = _get_turbina_params_for_misuratore(id_misuratore)
+    if not params:
+        return JsonResponse(
+            {
+                "flow_ls_avg_30m": float(flow_ls_avg),
+                "eta": None,
+                "power_kw": None,
+                "head_m": None,
+                "is_stale": False,
+            }
+        )
+
+    flow_ls_avg = float(flow_ls_avg)
+    computed = _compute_eta_potenza(flow_ls_avg, params)
+
+    return JsonResponse(
+        {
+            "flow_ls_avg_30m": flow_ls_avg,
+            "eta": computed["eta"],
+            "power_kw": computed["power_kw"],
+            "head_m": computed["head_m"],
+            "x": computed["x"],
+            "turbina_id": computed["turbina_id"],
+            "is_stale": False,
+        }
+    )
+
+
+def curva_di_rendimento_turbina(request, nome_turbina):
+    """
+    Return dataset as {"curve_points": {"x": [...], "eta": [...]}} 
+    where x and eta are lists of floats corresponding to the curve points 
+    for the turbine with the given name.
+    """
+    if(nome_turbina is None or len(nome_turbina.strip()) == 0):
+        return JsonResponse({"error": "nome_turbina is required"}, status=400)
+    nome_turbina = nome_turbina.strip()
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT x, eta
+            FROM hydro.tab_turbina_curve_points as tbcp
+            JOIN hydro.tab_tipologia_turbina as ttt ON tbcp.id_turbina = ttt.id
+            WHERE ttt.nome = %s
+            """,
+            [nome_turbina]
+        )
+        rows = cursor.fetchall() # dovrebbero essere ~400 righe per ogni turbina
+    
+    if not rows:  # Check first, process after
+        return JsonResponse({"error": f"No curve points found for this turbine with name {nome_turbina}"}, status=404)
+    
+    x = [float(row[0]) for row in rows]
+    eta = [float(row[1]) for row in rows]
+    return JsonResponse({"curve_points": {"x": x, "eta": eta}}, status=200)
+    
+    
+def test_canvas(request, nome_tipologia_turbina):
+    return render(request, "portale/includes/test_canvas.html", {
+        "title": f"Test Canvas - {nome_tipologia_turbina}",
+        "nome_turbina": nome_tipologia_turbina  # Pass actual parameter value
+        })
+    
+
+
+def misuratori_index(request): 
+    misuratori = tab_misuratori.objects.all()
+    context = {
+        "misuratori": misuratori,
+        "title": "Hydro 3.0",
+    }
+    return render(request, "portale/misuratori_index.html", context)
+
+
