@@ -556,7 +556,9 @@ sia con .facility-panel/.facility-grid se li usi nel template.
 }
 
 .chart-body-grid {
-  display: block;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 
@@ -570,6 +572,7 @@ sia con .facility-panel/.facility-grid se li usi nel template.
   position: relative;
   flex: 1;
   min-width: 0;
+  min-height: 0;
   padding: 0;
 }
 
@@ -800,7 +803,8 @@ sia con .facility-panel/.facility-grid se li usi nel template.
   max-height: none;
   height: auto;
   flex: 1 1 auto;
-  overflow: hidden;
+  overflow: visible;
+  padding-bottom: 8px;
 }
 
 .facility-plot-grid.is-zoomed .chart-card.is-zoomed canvas {
