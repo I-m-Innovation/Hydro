@@ -1,0 +1,1 @@
+REFRESH MATERIALIZED VIEW CONCURRENTLY hydro.mv_flow_histogram_hours;

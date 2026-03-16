@@ -97,3 +97,16 @@ def ensure_mv_flow_duration_curve_hourly_raw_local():
     except Exception as e:
         print(f"[schema] mv_flow_duration_curve_hourly_raw_local error: {e}")
         raise
+
+
+def ensure_mv_flow_histogram_hours():
+    try:
+        with get_conn() as conn:
+            sql = load_sql("ensure_mv_flow_histogram_hours.sql")
+            with conn.cursor() as cur:
+                cur.execute(sql)
+            conn.commit()
+        print("[schema] mv_flow_histogram_hours ok")
+    except Exception as e:
+        print(f"[schema] mv_flow_histogram_hours error: {e}")
+        raise
