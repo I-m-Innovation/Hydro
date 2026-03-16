@@ -2,7 +2,7 @@ from datetime import datetime, timedelta
 import pytz
 
 from db_manager.db.conn import get_conn
-from db_manager.db.schema import ensure_raw_table, ensure_etl_state_table, ensure_measurements_index, ensure_flow_histogram_table, ensure_mv_flow_daily_avg, ensure_mv_led_status, ensure_mv_flow_duration_curve_hourly_raw_local
+from db_manager.db.schema import ensure_raw_table, ensure_etl_state_table, ensure_measurements_index, ensure_flow_histogram_table, ensure_mv_flow_daily_avg, ensure_mv_led_status, ensure_mv_flow_duration_curve_hourly_raw_local, ensure_mv_flow_histogram_hours
 # from db_manager.db.schema import ensure_mv_flow_exceedance_raw_vs_smoothed_2d
 from db_manager.jobs.ingest_eventhub import load_eventhub_configs, start_consumers
 from db_manager.jobs.transform_raw import transform_raw_to_measurements
@@ -11,6 +11,9 @@ from db_manager.jobs.clean_measurements import clean_measurements
 from db_manager.jobs.refresh_duration_curve_mv import refresh_duration_curve_mv
 from db_manager.jobs.refresh_flow_histogram import refresh_flow_histogram
 from db_manager.jobs.refresh_mv_flow_daily_avg import refresh_mv_flow_daily_avg
+from db_manager.jobs.refresh_mv_flow_histogram_hours import (
+    refresh_mv_flow_histogram_hours,
+)
 from db_manager.jobs.refresh_mv_led_status import refresh_mv_led_status
 from db_manager.jobs.refresh_mv_flow_duration_curve_hourly_raw_local import (
     refresh_mv_flow_duration_curve_hourly_raw_local,
@@ -19,7 +22,7 @@ from db_manager.jobs.refresh_mv_flow_duration_curve_hourly_raw_local import (
 #     refresh_mv_flow_exceedance_raw_vs_smoothed_2d,
 # )
 
-from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, SECONDS_BETWEEN_REFRESH_LED_STATUS, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ, DURATION_CURVE_MV_REFRESH_HOUR, DURATION_CURVE_MV_REFRESH_MINUTE, DURATION_CURVE_MV_REFRESH_TZ, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_HOUR, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_MINUTE, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_TZ
+from db_manager.config.settings import RAW_TABLE_NAME, SECONDS_BETWEEN_RAW_TO_MEASUREMENTS_TRANSFORM, SECONDS_BETWEEN_REFRESH_STATS, SECONDS_BETWEEN_CLEAN_MEASUREMENTS, SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM, SECONDS_BETWEEN_REFRESH_LED_STATUS, MV_FLOW_DAILY_AVG_REFRESH_HOUR, MV_FLOW_DAILY_AVG_REFRESH_MINUTE, MV_FLOW_DAILY_AVG_REFRESH_TZ, DURATION_CURVE_MV_REFRESH_HOUR, DURATION_CURVE_MV_REFRESH_MINUTE, DURATION_CURVE_MV_REFRESH_TZ, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_HOUR, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_MINUTE, HOURLY_RAW_DURATION_CURVE_MV_REFRESH_TZ, FLOW_HISTOGRAM_HOURS_MV_REFRESH_HOUR, FLOW_HISTOGRAM_HOURS_MV_REFRESH_MINUTE, FLOW_HISTOGRAM_HOURS_MV_REFRESH_TZ
 # from db_manager.config.settings import FLOW_EXCEEDANCE_MV_REFRESH_HOUR, FLOW_EXCEEDANCE_MV_REFRESH_MINUTE, FLOW_EXCEEDANCE_MV_REFRESH_TZ
 
 
@@ -116,6 +119,44 @@ def start_refresh_duration_curve_hourly_raw_local_nightly(
                 sleep(60)
     print(
         "[scheduler] refresh_duration_curve_hourly_raw_local_nightly started "
+        f"(every day at {hour:02d}:{minute:02d} {tz_name})"
+    )
+    thread = threading.Thread(target=loop, daemon=True)
+    thread.start()
+
+
+def start_refresh_flow_histogram_hours_mv_nightly(
+    hour=FLOW_HISTOGRAM_HOURS_MV_REFRESH_HOUR,
+    minute=FLOW_HISTOGRAM_HOURS_MV_REFRESH_MINUTE,
+    tz_name=FLOW_HISTOGRAM_HOURS_MV_REFRESH_TZ,
+):
+    # runs mv_flow_histogram_hours nightly
+    def loop():
+        tz = pytz.timezone(tz_name)
+        i = 1
+        while True:
+            try:
+                now = datetime.now(tz)
+                target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+                if target <= now:
+                    target += timedelta(days=1)
+
+                sleep_seconds = (target - now).total_seconds()
+                print(
+                    f"Refresh flow_histogram_hours_mv job {i} sleeping for {sleep_seconds}."
+                )
+                sleep(sleep_seconds)
+
+                refresh_mv_flow_histogram_hours()
+                print(
+                    f"Refresh flow_histogram_hours_mv job {i} executed successfully."
+                )
+                i += 1
+            except Exception as e:
+                print(f"Error executing flow_histogram_hours_mv job {i}: {e}")
+                sleep(60)
+    print(
+        "[scheduler] refresh_flow_histogram_hours_mv_nightly started "
         f"(every day at {hour:02d}:{minute:02d} {tz_name})"
     )
     thread = threading.Thread(target=loop, daemon=True)
@@ -239,12 +280,13 @@ def main():
         ensure_mv_flow_daily_avg()
         ensure_mv_led_status()
         ensure_mv_flow_duration_curve_hourly_raw_local()
+        ensure_mv_flow_histogram_hours()
         # ensure_mv_flow_exceedance_raw_vs_smoothed_2d()
         print(
             "\nSchema checks completed: "
             f"{RAW_TABLE_NAME}, etl_state, measurements_index, "
             "flow_histogram, mv_flow_daily_avg, mv_led_status, "
-            "mv_flow_duration_curve_hourly_raw_local.\n"
+            "mv_flow_duration_curve_hourly_raw_local, mv_flow_histogram_hours.\n"
         )
     except Exception as e:
         print(f"Error creating/checking table {RAW_TABLE_NAME}: {e}")
@@ -263,6 +305,7 @@ def main():
     start_clean_measurements_scheduler(SECONDS_BETWEEN_CLEAN_MEASUREMENTS)
     start_refresh_duration_curve_mv_nightly()
     start_refresh_duration_curve_hourly_raw_local_nightly()
+    start_refresh_flow_histogram_hours_mv_nightly()
     start_refresh_flow_histogram_scheduler(SECONDS_BETWEEN_REFRESH_FLOW_HISTOGRAM)
     start_refresh_mv_flow_daily_avg_nightly()
     start_refresh_led_status_scheduler(SECONDS_BETWEEN_REFRESH_LED_STATUS)
