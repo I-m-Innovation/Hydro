@@ -267,27 +267,54 @@
                     </div>
                 </div>
             </div>
-          <div class="chart-card">
-            <div class="chart-card-header">
-              <div class="chart-actions">
-                <button class="chart-zoom" type="button" data-target="chart-fluid-velocity" aria-label="Zoom grafico velocita">+</button>
-                <button class="chart-reset" type="button" data-target="chart-fluid-velocity" aria-label="Reset zoom grafico velocita">Reset</button>
-                <button class="chart-refresh" type="button" data-target="chart-fluid-velocity" aria-label="Aggiorna grafico velocita">Aggiorna</button>
-              </div>
-            </div>
-            <div class="chart-card-body">
-                <div class="chart-loader" aria-hidden="true">
-                <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+            <div class="chart-card">
+                <div class="chart-card-header">
+                <div class="chart-actions">
+                    <button
+                    class="chart-info chart-info-wide chart-info-rich"
+                    type="button"
+                    aria-label="Informazioni grafico distribuzione portata in ore"
+                    data-popover-target="flow-histogram-hours-popover"
+                    title="DISTRIBUZIONE PORTATA IN ORE"
+                    >i</button>
+                    <div
+                    id="flow-histogram-hours-popover"
+                    class="chart-popover is-hidden"
+                    role="dialog"
+                    aria-hidden="true"
+                    aria-label="Dettagli grafico distribuzione portata in ore"
+                    >
+                        <h4 class="chart-popover__title">Dettagli distribuzione portata in ore</h4>
+                        <p class="chart-popover__section-title">Cosa mostra</p>
+                        <p class="chart-popover__text">
+                            Ogni barra rappresenta il numero totale di ore, sull'intero storico disponibile dell'impianto, in cui la portata media oraria smoothed e' caduta nel relativo intervallo di portata.
+                        </p>
+                        <p class="chart-popover__section-title">Come viene calcolato</p>
+                        <ul class="chart-popover__list">
+                            <li>Le misure sono aggregate per ora locale Europe/Rome.</li>
+                            <li>Per ogni ora si calcola la media della portata smoothed.</li>
+                            <li>Ogni media oraria viene assegnata a un bin fisso di 10 l/s.</li>
+                            <li>L'altezza della barra corrisponde alle ore cumulative nel bin.</li>
+                        </ul>
+                    </div>
+                    <button class="chart-zoom" type="button" data-target="chart-fluid-velocity" aria-label="Zoom grafico distribuzione portata">+</button>
+                    <button class="chart-reset" type="button" data-target="chart-fluid-velocity" aria-label="Reset zoom grafico distribuzione portata">Reset</button>
+                    <button class="chart-refresh" type="button" data-target="chart-fluid-velocity" aria-label="Aggiorna grafico distribuzione portata">Aggiorna</button>
                 </div>
-                <canvas
-                id="chart-fluid-velocity"
-                aria-label="Grafico velocita"
-                role="img"
-                data-misuratore="{{misuratore.id_misuratore}}"
-                ></canvas>
+                </div>
+                <div class="chart-card-body">
+                    <div class="chart-loader" aria-hidden="true">
+                    <img class="chart-loader-media" src="{% static 'portale/images/hourglass.gif' %}" alt="Caricamento grafico" />
+                    </div>
+                    <canvas
+                    id="chart-fluid-velocity"
+                    aria-label="Grafico distribuzione portata in ore"
+                    role="img"
+                    data-misuratore="{{misuratore.id_misuratore}}"
+                    ></canvas>
+                </div>
             </div>
-          </div>
-          <div class="chart-card">
+            <div class="chart-card">
             <div class="chart-card-header">
                 <div class="chart-actions">
                     <button
