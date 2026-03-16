@@ -224,6 +224,88 @@ python manage.py runserver 0.0.0.0:8000
 
 ---
 
+## Possible Future Implementation: Safe Full Regeneration of `tab_measurements_clean`
+
+This section documents a possible future design for the weekly full regeneration of `hydro.tab_measurements_clean`. It is not implemented yet, but it captures the current reasoning and the constraints to preserve.
+
+### Goal
+- Rebuild the full cleaned dataset without ever leaving the live table in a partially regenerated state.
+- Keep the operational impact on the live database as low as possible.
+- Avoid replacing a healthy live table with a broken or incomplete regenerated dataset.
+
+### Proposed High-Level Workflow
+1. The weekly scheduler reaches the configured execution time.
+2. Pause the incremental cleaner with `clean_pause_event`.
+3. Acquire `clean_run_lock` with a timeout.
+4. If the lock cannot be acquired in time:
+   - log the failure clearly
+   - clear the pause event
+   - retry with a bounded retry policy
+   - do not wait forever
+5. Once the lock is acquired, begin the regeneration flow.
+6. `TRUNCATE` the staging table only.
+7. Rebuild the full regenerated dataset into the staging table.
+8. Run validation checks on staging.
+9. Only if validation passes, publish staging into `hydro.tab_measurements_clean` in one short final transaction.
+10. Release the lock and clear the pause event.
+
+### Why Use a Staging Table
+- The expensive recomputation happens outside the live table.
+- The live table remains stable and readable while regeneration runs.
+- The final publish step can be short and atomic.
+- If the regeneration fails before publication, the live table remains untouched.
+
+### Important Rule About `TRUNCATE`
+At the beginning of the job, `TRUNCATE` should be applied to the staging table, not to `hydro.tab_measurements_clean`.
+
+If the live table were truncated before validation and the job failed halfway through, the system could end up with an empty or partially rebuilt production table. By truncating only the staging table first, the process starts from a clean workspace without risking the current live dataset.
+
+### Suggested Validation Before Publish
+Before replacing the live table, the staging table should pass a set of checks.
+
+Hard checks:
+- staging row count must be greater than zero
+- key columns must not be null
+- there must be no duplicate logical keys such as `(id_misuratore, data_misurazione)`
+- device coverage must match the expected dataset
+- the min/max timestamp range must look plausible
+
+Coverage checks against the live table:
+- rows present in live but missing in staging must be treated as a failure by default
+- rows present in staging but not in live may be acceptable only if they are explainable by valid source coverage
+
+Practical rule:
+- if staging is missing any logical row currently present in the live table, abort publication
+
+This is stronger and safer than checking only total row counts.
+
+### What to Do If Staging Has Fewer Rows Than Live
+If the weekly job is intended to fully rebuild `tab_measurements_clean`, then a staging table with fewer rows than the live table should be treated as suspicious by default.
+
+In that case:
+- do not publish
+- keep the live table unchanged
+- inspect why those rows are missing
+
+Only explicit business rules should allow publication with fewer rows, for example a known deduplication rule or an intentional source-data correction.
+
+### Suggested Publish Sequence
+If validation passes, the publish step should be short and atomic:
+1. begin transaction
+2. `TRUNCATE hydro.tab_measurements_clean`
+3. `INSERT INTO hydro.tab_measurements_clean (...) SELECT ... FROM staging`
+4. commit
+
+This ensures that the live table moves from the old complete version to the new complete version in a single publish step, instead of exposing a device-by-device mixed state.
+
+### Notes on Locking and Operational Impact
+- Using a staging table reduces the amount of time the live table is being modified.
+- It does not remove the need for `clean_run_lock`.
+- It shortens the lock-sensitive publication window.
+- A timeout on `clean_run_lock.acquire()` is still recommended to avoid indefinite blocking.
+
+---
+
 ## ✅ Status del Progetto secondo Claude 4
 
 ### Valutazione per Uso Aziendale (3-4 utenti)

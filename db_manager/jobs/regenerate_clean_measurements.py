@@ -54,7 +54,11 @@ def regenerate_clean_measurements():
             df = pd.DataFrame(rows, columns=["ts_s", "flow_raw"])
             series = df["flow_raw"].astype(float)
 
-            result = hampel(series, window_size=HAMPEL_WINDOW_SIZE, n_sigma=HAMPEL_SIGMA_THRESHOLD)
+            result = hampel(
+                series,
+                window_size=HAMPEL_WINDOW_SIZE,
+                n_sigma=HAMPEL_SIGMA_THRESHOLD,
+            )
             filtered = result.filtered_data
             outlier_indices = set(result.outlier_indices)
             medians = result.medians
@@ -74,7 +78,7 @@ def regenerate_clean_measurements():
                     _clamp_numeric(float(filtered[i])) if filtered is not None else None,
                     bool(is_outlier),
                     _clamp_numeric(float(medians[i])) if medians is not None else None,
-                    _clamp_numeric(float(thresholds[i])) if thresholds is not None else None
+                    _clamp_numeric(float(thresholds[i])) if thresholds is not None else None,
                 ))
 
             with conn.cursor() as cur:

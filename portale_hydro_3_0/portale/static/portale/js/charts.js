@@ -1567,6 +1567,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const zoomButtons = grid.querySelectorAll(".chart-zoom");
     let activeZoomCard = null;
+    let zoomRelayoutTimer = null;
 
     const applyZoomCardHeight = (card) => {
         if (!card) {
@@ -1588,6 +1589,40 @@ document.addEventListener("DOMContentLoaded", () => {
             return;
         }
         card.style.removeProperty("--zoom-card-height");
+    };
+
+    const resizeAllCharts = () => {
+        instances.forEach((chartInstance) => {
+            const canvas = chartInstance?.canvas;
+            if (canvas) {
+                canvas.style.width = "";
+                canvas.style.height = "";
+                canvas.removeAttribute("width");
+                canvas.removeAttribute("height");
+            }
+            chartInstance.resize();
+        });
+    };
+
+    const refreshZoomLayout = () => {
+        if (!(grid.classList.contains("is-zoomed") && activeZoomCard)) {
+            return;
+        }
+        applyZoomCardHeight(activeZoomCard);
+        resizeAllCharts();
+    };
+
+    const scheduleZoomRelayout = () => {
+        requestAnimationFrame(() => {
+            refreshZoomLayout();
+            if (zoomRelayoutTimer) {
+                clearTimeout(zoomRelayoutTimer);
+            }
+            // Second pass once layout (wrapping/fonts) has settled.
+            zoomRelayoutTimer = setTimeout(() => {
+                refreshZoomLayout();
+            }, 80);
+        });
     };
 
     zoomButtons.forEach((button) => {
@@ -1634,29 +1669,13 @@ document.addEventListener("DOMContentLoaded", () => {
                 });
             }
 
-            requestAnimationFrame(() => {
-                instances.forEach((chartInstance) => {
-                    const canvas = chartInstance?.canvas;
-                    if (canvas) {
-                        canvas.style.width = "";
-                        canvas.style.height = "";
-                        canvas.removeAttribute("width");
-                        canvas.removeAttribute("height");
-                    }
-                    chartInstance.resize();
-                });
-            });
+            scheduleZoomRelayout();
         });
     });
 
     window.addEventListener("resize", () => {
         if (grid.classList.contains("is-zoomed") && activeZoomCard) {
-            applyZoomCardHeight(activeZoomCard);
-            requestAnimationFrame(() => {
-                instances.forEach((chartInstance) => {
-                    chartInstance.resize();
-                });
-            });
+            scheduleZoomRelayout();
         }
     });
 });
