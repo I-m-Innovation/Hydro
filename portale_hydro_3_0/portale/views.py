@@ -540,6 +540,61 @@ def flow_histogram_api(request):
         }
     )
 
+
+# @login_required
+def flow_histogram_hours_api(request):
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                bin_index,
+                range_start,
+                range_end,
+                hours_raw,
+                hours_smoothed,
+                updated_at
+            FROM hydro.mv_flow_histogram_hours
+            WHERE id_misuratore = %s
+            ORDER BY bin_index
+            """,
+            [id_misuratore],
+        )
+        rows = cursor.fetchall()
+
+    if not rows:
+        return JsonResponse(
+            {
+                "bin_index": [],
+                "range_start": [],
+                "range_end": [],
+                "hours_raw": [],
+                "hours_smoothed": [],
+                "updated_at": None,
+            }
+        )
+
+    bin_index = [int(row[0]) for row in rows]
+    range_start = [float(row[1]) for row in rows]
+    range_end = [float(row[2]) for row in rows]
+    hours_raw = [int(row[3]) for row in rows]
+    hours_smoothed = [int(row[4]) for row in rows]
+    latest_updated_at = max((row[5] for row in rows if row[5] is not None), default=None)
+
+    return JsonResponse(
+        {
+            "bin_index": bin_index,
+            "range_start": range_start,
+            "range_end": range_end,
+            "hours_raw": hours_raw,
+            "hours_smoothed": hours_smoothed,
+            "updated_at": latest_updated_at.isoformat() if latest_updated_at else None,
+        }
+    )
+
 # @login_required
 def misuratore_detail(request, id_misuratore):
     id_misuratore, error = validate_id_misuratore(id_misuratore)
