@@ -852,3 +852,68 @@ Include caricati nel template:
 Per il bottone `i` e disattivato il vecchio pseudo-tooltip CSS:
 - classe `chart-info-rich`
 - regola: `.chart-info.chart-info-rich::after { display: none; }`
+
+
+
+
+
+
+
+
+
+
+
+
+# Come inserire dati di log raw 
+
+E' molto probabile che in futuro ci si trovi nella situazione di inserire dati in formato di log all'interno del database e per fare ciò ci sarà bisogno di usare uno script di creazione di un file csv con i dati dei log da importare in una tabella di staging del database per poi essere inseriti nella tabella finale. 
+
+Tale script e codice si trovano al momento solo nel mio pc (Luca) e non sono stati ancora inseriti nel repository. La sequenza di passaggi utili ad inserire i dati viene descritta di seguito ed è presa dal readme presente nella repository dello script stesso.
+
+## Inserimento dati di log raw
+
+Quando stefano ti da lo zip con i dati per i salti di merone, devi estrarre i file `print.txt` ed referenziarli all'interno 
+del file `Script_for_missing_datas.py` nella variabile `MISURATORI` (sostituendo i path esistenti che sono riferiti a file non più presenti).
+
+una volta fatto cio, ti basterà avviare lo script con il comando 
+```bash
+python Script_for_missing_datas.py
+```
+che si occuperà di estrarre i dati dai file `print.txt` e di inserire questi nel file csv di output. Al momento il file di output appende i dati 
+al file csv già esistente, quindi nel caso eliminalo prima di avviare lo script, in modo da avere un file csv pulito con solo i dati nuovi. 
+
+Una volta creato il file contenente i dati di tutti i misuratori, dovrai inserire questi all'interno del database postgres di riferimento. 
+Quindi apri pgAdmin, e come prima operazione elimina i dati presenti nella tabella "tab_measurments_clean_staging" (ossia la tabella di staging) 
+usando il comando 
+```sql
+TRUNCATE hydro.tab_measurements_clean_staging;
+``` 
+
+Dopodiche, utilizzando la funzione GUI di importazione dati di pgadmin, importa i dati del file csv all'interno della tabella "tab_measurments_clean_staging".
+Infine, usando questa tabella, bisogna importare i dati all'interno della tabella "tab_measurments_clean" (ossia la tabella finale) usando una query SQL di insert-select.
+Di seguito la query utilizzata fino ad ora: 
+```sql
+INSERT INTO hydro.tab_measurements_clean (
+  id_misuratore,
+  data_misurazione,
+  flow_ls_raw,
+  flow_ls_smoothed,
+  is_outlier,
+  window_median,
+  thresholds,
+  updated_at
+)
+SELECT
+  id_misuratore,
+  data_misurazione,
+  flow_ls_raw,
+  flow_ls_smoothed,
+  is_outlier,
+  window_median,
+  thresholds,
+  COALESCE(updated_at, now())
+FROM hydro.tab_measurements_clean_staging
+ON CONFLICT (id_misuratore, data_misurazione) DO NOTHING;
+```
+
+Fatto questo, i dati saranno finalmente presenti all'interno della tabella finale e potranno essere utilizzati per le analisi sul portale.
