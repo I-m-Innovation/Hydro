@@ -177,7 +177,14 @@ STATICFILES_STORAGE = "whitenoise.storage.CompressedManifestStaticFilesStorage"
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 
-# LOGIN_URL = "/accounts/login/"
-# LOGIN_REDIRECT_URL = "/portale/home/"
-# LOGOUT_REDIRECT_URL = "/accounts/login/"
+LOGIN_URL = "/portale/"
+LOGIN_REDIRECT_URL = "/portale/misuratori/"
+LOGOUT_REDIRECT_URL = "/portale/"
+
+EYEQ_PORTALE_IMPIANTI_ENTRY_URL = "http://127.0.0.1:8000/portale-impianti/"
+EYEQ_PORTALE_IMPIANTI_SSO_SECRET = os.environ.get("EYEQ_PORTALE_IMPIANTI_SSO_SECRET", "").strip()
+EYEQ_PORTALE_IMPIANTI_SSO_SALT = "eyeq-portale-impianti-sso"
+EYEQ_PORTALE_IMPIANTI_SSO_MAX_AGE_SECONDS = 60
+EYEQ_PORTALE_IMPIANTI_SSO_ISSUER = "eyeq"
+EYEQ_PORTALE_IMPIANTI_SSO_AUDIENCE = "portale_impianti"
 

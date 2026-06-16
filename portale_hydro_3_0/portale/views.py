@@ -1,14 +1,23 @@
 from datetime import timedelta
 from bisect import bisect_right
+from urllib.parse import urlencode
 import time
 import re
 
+from django.conf import settings
+from django.contrib import messages
+from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth.decorators import login_required
+from django.core import signing
+from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
-from django.shortcuts import render
+from django.shortcuts import redirect, render
 from django.db import connection
 from django.db.models import Max
+from django.urls import reverse
 from django.utils import timezone
-# from django.contrib.auth.decorators import login_required
+from django.utils.http import url_has_allowed_host_and_scheme
+from django.views.decorators.cache import never_cache
 
 from .models import tab_measurements_clean, tab_misuratori, tab_statistiche_misuratori
 
@@ -18,6 +27,120 @@ ALLOWED_RANGE_KEYS = {"24h", "7d", "1m", "6m", "1y", "all"}
 EXPECTED_POWER_RANGES = set(ALLOWED_RANGE_KEYS)
 WATER_DENSITY_KG_M3 = 1000.0
 GRAVITY_M_S2 = 9.81
+
+
+def _portale_home_url():
+    return reverse("misuratori_index")
+
+
+def _safe_local_redirect(request, raw_target, fallback):
+    target = str(raw_target or "").strip()
+    if target and url_has_allowed_host_and_scheme(
+        target,
+        allowed_hosts={request.get_host()},
+        require_https=request.is_secure(),
+    ):
+        return target
+    return fallback
+
+
+def _redirect_to_eyeq_entry(request, *, message=""):
+    entry_url = str(getattr(settings, "EYEQ_PORTALE_IMPIANTI_ENTRY_URL", "") or "").strip()
+    if not entry_url:
+        raise PermissionDenied("Accesso consentito solo tramite Eye-Q.")
+    if message:
+        messages.error(request, message)
+
+    next_path = _safe_local_redirect(request, request.GET.get("next"), _portale_home_url())
+    separator = "&" if "?" in entry_url else "?"
+    return redirect(f"{entry_url}{separator}{urlencode({'next': next_path})}")
+
+
+@never_cache
+def sso_required(request):
+    if request.user.is_authenticated:
+        return redirect("misuratori_index")
+    return _redirect_to_eyeq_entry(request)
+
+
+def _load_sso_payload(token):
+    shared_secret = str(getattr(settings, "EYEQ_PORTALE_IMPIANTI_SSO_SECRET", "") or "")
+    if not shared_secret:
+        raise PermissionDenied("SSO Portale Impianti non configurato.")
+
+    return signing.loads(
+        token,
+        key=shared_secret,
+        salt=str(
+            getattr(settings, "EYEQ_PORTALE_IMPIANTI_SSO_SALT", "eyeq-portale-impianti-sso")
+            or "eyeq-portale-impianti-sso"
+        ),
+        max_age=int(getattr(settings, "EYEQ_PORTALE_IMPIANTI_SSO_MAX_AGE_SECONDS", 60) or 60),
+    )
+
+
+def _payload_has_value(value, expected):
+    if isinstance(value, (list, tuple, set)):
+        return expected in {str(item or "").strip() for item in value}
+    return str(value or "").strip() == expected
+
+
+def _validate_sso_authorization(payload):
+    expected_issuer = str(getattr(settings, "EYEQ_PORTALE_IMPIANTI_SSO_ISSUER", "eyeq") or "eyeq").strip()
+    expected_audience = str(
+        getattr(settings, "EYEQ_PORTALE_IMPIANTI_SSO_AUDIENCE", "portale_impianti") or "portale_impianti"
+    ).strip()
+
+    if str(payload.get("iss") or "").strip() != expected_issuer:
+        raise PermissionDenied("Issuer SSO non valido.")
+    if not _payload_has_value(payload.get("aud"), expected_audience):
+        raise PermissionDenied("Token SSO non destinato a Portale Impianti.")
+    if not _payload_has_value(payload.get("page"), expected_audience):
+        raise PermissionDenied("Utente non autorizzato da Eye-Q per Portale Impianti.")
+
+
+def _sso_user_from_payload(payload):
+    username = str(payload.get("username") or payload.get("sub") or "").strip()[:150]
+    if not username:
+        raise PermissionDenied("Token SSO senza utente.")
+
+    user_model = get_user_model()
+    user, created = user_model.objects.get_or_create(username=username)
+    if created:
+        user.set_unusable_password()
+
+    user.email = str(payload.get("email") or user.email or "").strip()[:254]
+    user.first_name = str(payload.get("first_name") or user.first_name or "").strip()[:150]
+    user.last_name = str(payload.get("last_name") or user.last_name or "").strip()[:150]
+    user.is_active = True
+    user.save()
+    return user
+
+
+@never_cache
+def sso_login(request):
+    token = str(request.GET.get("token") or "").strip()
+    if not token:
+        return _redirect_to_eyeq_entry(request, message="Accesso a Portale Impianti consentito solo da Eye-Q.")
+
+    try:
+        payload = _load_sso_payload(token)
+    except signing.SignatureExpired:
+        return _redirect_to_eyeq_entry(request, message="Accesso scaduto. Riapri Portale Impianti da Eye-Q.")
+    except signing.BadSignature:
+        return _redirect_to_eyeq_entry(request, message="Accesso non valido. Riapri Portale Impianti da Eye-Q.")
+
+    _validate_sso_authorization(payload)
+    user = _sso_user_from_payload(payload)
+    login(request, user, backend="django.contrib.auth.backends.ModelBackend")
+
+    next_url = _safe_local_redirect(request, payload.get("next") or request.GET.get("next"), _portale_home_url())
+    return redirect(next_url)
+
+
+def logout_view(request):
+    logout(request)
+    return redirect("login")
 
 
 def validate_id_misuratore(raw_value):
@@ -131,7 +254,7 @@ def _compute_expected_power_kw(flow_ls, head_m, eta):
     power_kw = (WATER_DENSITY_KG_M3 * GRAVITY_M_S2 * q_m3s * head_m * eta) / 1000.0
     return round(max(0.0, power_kw), 2)
 
-# @login_required
+@login_required
 def home(request):
     misuratori = tab_misuratori.objects.all()
     context = {
@@ -141,7 +264,7 @@ def home(request):
     }
     return render(request, "portale/home.html", context)
 
-# @login_required
+@login_required
 def facilities_map(request):
     misuratori = tab_misuratori.objects.all()
     return render(request, "portale/facilities_map.html", {
@@ -149,7 +272,7 @@ def facilities_map(request):
         "title": "Facilities Map"
     })
 
-# @login_required
+@login_required
 def measurements_api(request):
     id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
     if error:
@@ -412,7 +535,7 @@ def measurements_api(request):
     )
     return JsonResponse(data)
 
-# @login_required
+@login_required
 def duration_curve_api(request):
     t0 = time.perf_counter()
     id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
@@ -486,7 +609,7 @@ def duration_curve_api(request):
     resp["Cache-Control"] = "public, max-age=72000"  # 20 hours
     return resp
 
-# @login_required
+@login_required
 def flow_histogram_api(request):
     id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
     if error:
@@ -540,7 +663,61 @@ def flow_histogram_api(request):
         }
     )
 
-# @login_required
+@login_required
+def flow_histogram_hours_api(request):
+    id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
+    if error:
+        return JsonResponse({"error": error}, status=400)
+
+    with connection.cursor() as cursor:
+        cursor.execute(
+            """
+            SELECT
+                bin_index,
+                range_start,
+                range_end,
+                hours_raw,
+                hours_smoothed,
+                updated_at
+            FROM hydro.mv_flow_histogram_hours
+            WHERE id_misuratore = %s
+            ORDER BY bin_index
+            """,
+            [id_misuratore],
+        )
+        rows = cursor.fetchall()
+
+    if not rows:
+        return JsonResponse(
+            {
+                "bin_index": [],
+                "range_start": [],
+                "range_end": [],
+                "hours_raw": [],
+                "hours_smoothed": [],
+                "updated_at": None,
+            }
+        )
+
+    bin_index = [int(row[0]) for row in rows]
+    range_start = [float(row[1]) for row in rows]
+    range_end = [float(row[2]) for row in rows]
+    hours_raw = [int(row[3]) for row in rows]
+    hours_smoothed = [int(row[4]) for row in rows]
+    latest_updated_at = max((row[5] for row in rows if row[5] is not None), default=None)
+
+    return JsonResponse(
+        {
+            "bin_index": bin_index,
+            "range_start": range_start,
+            "range_end": range_end,
+            "hours_raw": hours_raw,
+            "hours_smoothed": hours_smoothed,
+            "updated_at": latest_updated_at.isoformat() if latest_updated_at else None,
+        }
+    )
+
+@login_required
 def misuratore_detail(request, id_misuratore):
     id_misuratore, error = validate_id_misuratore(id_misuratore)
     if error:
@@ -593,7 +770,7 @@ def misuratore_detail(request, id_misuratore):
     }
     return render(request, "portale/misuratore_detail.html", context)
 
-# @login_required
+@login_required
 def led_status_api(request):
     with connection.cursor() as cursor:
         cursor.execute(
@@ -773,6 +950,7 @@ def _compute_eta_potenza(flow_ls_avg, params):
     }
 
 
+@login_required
 def rendimento_potenza_api(request):
     id_misuratore, error = validate_id_misuratore(request.GET.get("id_misuratore"))
     if error:
@@ -828,6 +1006,7 @@ def rendimento_potenza_api(request):
     )
 
 
+@login_required
 def curva_di_rendimento_turbina(request, nome_turbina):
     """
     Return dataset as {"curve_points": {"x": [...], "eta": [...]}} 
@@ -857,6 +1036,7 @@ def curva_di_rendimento_turbina(request, nome_turbina):
     return JsonResponse({"curve_points": {"x": x, "eta": eta}}, status=200)
     
     
+@login_required
 def test_canvas(request, nome_tipologia_turbina):
     return render(request, "portale/includes/test_canvas.html", {
         "title": f"Test Canvas - {nome_tipologia_turbina}",
@@ -865,6 +1045,7 @@ def test_canvas(request, nome_tipologia_turbina):
     
 
 
+@login_required
 def misuratori_index(request): 
     misuratori = tab_misuratori.objects.all()
     context = {

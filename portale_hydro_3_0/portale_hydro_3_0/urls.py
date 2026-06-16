@@ -25,7 +25,7 @@ from django.views.generic import RedirectView
 
 
 urlpatterns = [
-    path("", RedirectView.as_view(url="/portale/misuratori/", permanent=False)),
+    path("", RedirectView.as_view(url="/portale/", permanent=False)),
     path("favicon.ico", lambda request: HttpResponse(status=204)),
     path('admin/', admin.site.urls),
     # path('accounts/', include('django.contrib.auth.urls')),
