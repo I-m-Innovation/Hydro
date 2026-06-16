@@ -154,18 +154,54 @@ class tab_statistiche_misuratori # Statistiche aggregate
 - **Retry logic** con backoff esponenziale
 
 #### 🔐 Sicurezza
-- **Login required** su tutte le view (`@login_required`)
+- **Accesso SSO da Eye-Q**: il portale non espone login/registrazione propri per gli utenti finali
+- **Login required** su tutte le view operative (`@login_required`)
 - **Input validation** robusta con whitelist e regex
 - **SQL injection protection** via ORM e parametri
 - **CSRF protection** Django standard
 
-#### Riattivare il login (se rimosso)
-Per ripristinare l'autenticazione:
-- Ripristina i decorator `@login_required` nelle view in `portale_hydro_3_0/portale/views.py`.
-- Ripristina l'import `from django.contrib.auth.decorators import login_required` nello stesso file.
-- Riattiva la route auth in `portale_hydro_3_0/portale_hydro_3_0/urls.py`:
-  `path("accounts/", include("django.contrib.auth.urls")),`
-- Riattiva `LOGIN_URL` (e facoltativamente `LOGOUT_REDIRECT_URL`) in `portale_hydro_3_0/portale_hydro_3_0/settings.py`.
+#### SSO Eye-Q
+Il portale `portale_hydro_3_0` viene aperto dal gestionale Eye-Q tramite token firmato. Eye-Q resta il gestore utenti; nel portale resta un `auth.User` locale solo per sessione Django, log e relazioni esistenti.
+
+Endpoint principali sotto `/portale/`:
+```text
+/portale/           # entry locale: rimanda a Eye-Q se non autenticato
+/portale/login/     # alias entry locale
+/portale/sso-login/ # riceve token firmato da Eye-Q
+/portale/logout/    # chiude la sessione locale
+```
+
+Token atteso:
+```text
+iss = eyeq
+aud = portale_impianti
+page = portale_impianti
+```
+
+Configurazione Django:
+- `LOGIN_URL = "/portale/"`
+- `LOGIN_REDIRECT_URL = "/portale/misuratori/"`
+- `LOGOUT_REDIRECT_URL = "/portale/"`
+- `EYEQ_PORTALE_IMPIANTI_ENTRY_URL = "http://127.0.0.1:8000/portale-impianti/"`
+- `EYEQ_PORTALE_IMPIANTI_SSO_SECRET` letta da variabile ambiente
+- `EYEQ_PORTALE_IMPIANTI_SSO_SALT = "eyeq-portale-impianti-sso"`
+- `EYEQ_PORTALE_IMPIANTI_SSO_MAX_AGE_SECONDS = 60`
+- `EYEQ_PORTALE_IMPIANTI_SSO_ISSUER = "eyeq"`
+- `EYEQ_PORTALE_IMPIANTI_SSO_AUDIENCE = "portale_impianti"`
+
+Comportamento:
+- un utente anonimo che apre `/portale/` viene rimandato all'entry Eye-Q con parametro `next`
+- `/portale/sso-login/?token=...` valida firma, scadenza, issuer, audience e pagina autorizzata
+- un token valido crea/aggiorna l'utente locale e apre una sessione Django
+- token senza `page`, con `aud` o `iss` errati ricevono 403
+- token scaduto o malformato rimanda a Eye-Q con messaggio di errore
+
+Variabile ambiente obbligatoria:
+```env
+EYEQ_PORTALE_IMPIANTI_SSO_SECRET=<SECRET_CONDIVISA_CON_EYEQ>
+```
+
+La stessa secret deve essere configurata anche nel progetto Eye-Q. Dopo averla modificata, riavviare il processo Django.
 
 #### 🎨 User Experience
 - **Responsive design** con sidebar navigazione
@@ -215,6 +251,15 @@ cd portale_hydro_3_0
 pip install -r requirements.txt
 python manage.py runserver 0.0.0.0:8000
 ```
+
+### Variabili Ambiente Portale
+Oltre alle variabili Django e database gia' presenti in `.env`, il portale richiede la secret condivisa con Eye-Q per l'accesso SSO:
+
+```env
+EYEQ_PORTALE_IMPIANTI_SSO_SECRET=<SECRET_CONDIVISA_CON_EYEQ>
+```
+
+La secret deve coincidere con quella configurata nel progetto Eye-Q. Se cambia, riavviare il servizio Django prima di riprovare l'accesso.
 
 ### Production Deploy
 - **Single machine** recommended per uso interno
