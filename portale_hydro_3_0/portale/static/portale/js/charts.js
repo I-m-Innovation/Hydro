@@ -25,7 +25,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const isFlowChart = (cfg) => cfg.id === "chart-flow-rate";
     const isDurationCurve = (cfg) => cfg.apiMode === "duration_curve";
-    const isHistogram = (cfg) => cfg.apiMode === "flow_histogram";
+    const isHistogram = (cfg) =>
+        cfg.apiMode === "flow_histogram" ||
+        cfg.apiMode === "flow_histogram_hours";
+    const isHistogramHours = (cfg) => cfg.apiMode === "flow_histogram_hours";
     const getGapThresholdMs = (rangeKey) =>
         LONG_GAP_RANGES.has(rangeKey)
             ? GAP_THRESHOLD_LONG_MS
@@ -527,6 +530,51 @@ document.addEventListener("DOMContentLoaded", () => {
         },
     };
 
+    const histogramMarkersPlugin = {
+        id: "histogramMarkers",
+        afterDatasetsDraw(chart) {
+            if (chart.config.type !== "bar" || !chart._histRanges?.length) {
+                return;
+            }
+            const meta = chart.getDatasetMeta(0);
+            const yScale = chart.scales?.y;
+            const { ctx } = chart;
+            if (!meta?.data?.length || !yScale) {
+                return;
+            }
+            const baselineY = yScale.getPixelForValue(0);
+            ctx.save();
+            meta.data.forEach((bar, index) => {
+                const rawPoint = chart.data.datasets?.[0]?.data?.[index];
+                const value = Number(rawPoint?.y);
+                if (!Number.isFinite(bar?.x) || !Number.isFinite(baselineY)) {
+                    return;
+                }
+                if (!Number.isFinite(value)) {
+                    return;
+                }
+                if (value > 0) {
+                    const markerY = Number.isFinite(bar.y) ? bar.y : baselineY;
+                    ctx.beginPath();
+                    ctx.arc(bar.x, markerY, 3.5, 0, Math.PI * 2);
+                    ctx.fillStyle = "#1d4ed8";
+                    ctx.fill();
+                    ctx.lineWidth = 1;
+                    ctx.strokeStyle = "rgba(255, 255, 255, 0.9)";
+                    ctx.stroke();
+                    return;
+                }
+                ctx.beginPath();
+                ctx.moveTo(bar.x - 4, baselineY);
+                ctx.lineTo(bar.x + 4, baselineY);
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = "rgba(107, 114, 128, 0.95)";
+                ctx.stroke();
+            });
+            ctx.restore();
+        },
+    };
+
     const buildDatasetConfigs = (cfg) =>
         cfg.datasets || [
             {
@@ -630,6 +678,11 @@ document.addEventListener("DOMContentLoaded", () => {
                             const count = context.chart?._histCounts?.[index] ?? 0;
                             const percent = context.chart?._histPercents?.[index] ?? 0;
                             return `${percent.toFixed(2)}% (${count} punti)`;
+                        }
+                        if (cfg.apiMode === "flow_histogram_hours") {
+                            const index = context.dataIndex;
+                            const hours = context.chart?._histHoursSmoothed?.[index] ?? 0;
+                            return `${hours} ore`;
                         }
                         const value = context.parsed?.y ?? context.parsed;
                         if (value === null || value === undefined) {
@@ -766,7 +819,11 @@ document.addEventListener("DOMContentLoaded", () => {
         const apiBase = isDurationCurve(cfg)
             ? "/portale/api/duration-curve/"
             : isHistogram(cfg)
-                ? "/portale/api/flow-histogram/"
+                ? (
+                    isHistogramHours(cfg)
+                        ? "/portale/api/flow-histogram-hours/"
+                        : "/portale/api/flow-histogram/"
+                )
                 : "/portale/api/measurements/";
 
         if (misuratoreId) {
@@ -805,6 +862,29 @@ document.addEventListener("DOMContentLoaded", () => {
         chart._gapRanges = computeGapRanges(xValues, rangeKey);
     };
 
+    const applyHistogramXAxis = (chart, data) => {
+        if (!chart.options.scales?.x) {
+            return;
+        }
+        const minRangeStart = Math.min(
+            0,
+            ...(data?.range_start || []).map((value) => {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            }),
+        );
+        const maxRangeEnd = Math.max(
+            0,
+            ...(data?.range_end || []).map((value) => {
+                const parsed = Number(value);
+                return Number.isFinite(parsed) ? parsed : 0;
+            }),
+        );
+        chart.options.scales.x.min = Math.round(minRangeStart);
+        chart.options.scales.x.max =
+            maxRangeEnd > 0 ? Math.round(maxRangeEnd * 1.1) : 10;
+    };
+
     const applyHistogramData = (chart, data, parsedValues, index) => {
         const mids = (data?.range_start || []).map((start, i) => {
             const end = data?.range_end?.[i];
@@ -819,10 +899,17 @@ document.addEventListener("DOMContentLoaded", () => {
         chart._histPercents = (data?.percent || []).map((value) =>
             Number.isFinite(Number(value)) ? Number(value) : 0,
         );
+        chart._histHoursRaw = (data?.hours_raw || []).map((value) =>
+            Number.isFinite(Number(value)) ? Number(value) : 0,
+        );
+        chart._histHoursSmoothed = (data?.hours_smoothed || []).map((value) =>
+            Number.isFinite(Number(value)) ? Number(value) : 0,
+        );
         chart._histRanges = (data?.range_start || []).map((start, i) => ({
             start: Number(start),
             end: Number(data?.range_end?.[i]),
         }));
+        applyHistogramXAxis(chart, data);
         chart.data.datasets[index].data = parsedValues.map((value, i) =>
             value === null ? null : { x: mids[i], y: value },
         );
@@ -1228,16 +1315,16 @@ document.addEventListener("DOMContentLoaded", () => {
         {
             id: "chart-fluid-velocity",
             type: "bar",
-            label: "Dati normalizzati in percentuale",
+            label: "Distribuzione portata in ore",
             data: [],
             color: "#16a34a",
             fillColor: "rgba(22, 163, 74, 0.18)",
             fill: false,
             useApi: true,
-            apiMode: "flow_histogram",
+            apiMode: "flow_histogram_hours",
             xScaleType: "linear",
             xTitle: "Portata (l/s)",
-            yTitle: "Distribuzione (%)",
+            yTitle: "Ore",
             xTicksCallback: (value) => value,
             xTicksDisplay: true,
             tooltipTitle: (items) => {
@@ -1260,7 +1347,7 @@ document.addEventListener("DOMContentLoaded", () => {
                     color: "#2563eb",
                     fillColor: "rgba(37, 99, 235, 0.35)",
                     fill: true,
-                    source: "percent",
+                    source: "hours_smoothed",
                     order: 1,
                     borderWidth: 1,
                 },
@@ -1389,7 +1476,12 @@ document.addEventListener("DOMContentLoaded", () => {
                 datasets: buildChartDatasets(cfg, datasetConfigs, averageDataset),
             },
             options: buildChartOptions(cfg, decimationEnabled),
-            plugins: [hoverLinePlugin, gapShadingPlugin, staticVLinePlugin],
+            plugins: [
+                hoverLinePlugin,
+                gapShadingPlugin,
+                staticVLinePlugin,
+                histogramMarkersPlugin,
+            ],
         });
 
         if (decimationThreshold !== null) {
